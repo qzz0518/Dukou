@@ -1,13 +1,6 @@
 <!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
 -->
-<p align="center">
-  <img src="https://raw.githubusercontent.com/qzz0518/Dukou/main/Resources/Screenshots/app-icon-rounded.png" width="96" alt="Dukou icon" />
-</p>
-
-<h2 align="center">Dukou（渡口）</h2>
-<p align="center">在微信的转发菜单里，直接把聊天记录送到你要用的地方。</p>
-
 ## 更新日志
 
 1. **五条转发入口**：微信「转发到其他应用」里出现 暂存到渡口 / 发给 Codex / 发给 Claude / 复制到剪贴板 / 发送到自定义，在设置里逐条开关。
@@ -27,28 +20,3 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
 5. **Attached prompt**: a prompt of your own is pasted ahead of the files; keep up to three and switch between them.
 6. **Quick WeChat forward (experimental)**: name a group and a message count; Dukou drives WeChat through Accessibility, verifies the exported ZIP and pastes it into the target app.
 7. **Secure distribution**: the Universal 2 app and DMG are Developer ID-signed, Apple-notarized and stapled, with an EdDSA-signed Sparkle update feed.
-
-## 安装 / Install
-
-### Homebrew
-
-```bash
-brew install --cask qzz0518/tap/dukou
-```
-
-### DMG
-
-下载下方的 `Dukou-0.1.0.dmg`，打开后将 Dukou 拖入 Applications，第一次打开后在「设置 → 入口」里打开需要的入口。
-
-Download `Dukou-0.1.0.dmg` below, open it, drag Dukou into Applications, then switch on the entries you want in Settings → Entries.
-
-## 兼容性 / Compatibility
-
-- macOS 14 或更高版本 / macOS 14 or later
-- Universal 2（Apple Silicon + Intel）
-- 已在微信 macOS 4.1.13 上验证「合并转发到其他应用」 / Verified against WeChat for Mac 4.1.13's merged forward
-- 「发给 Codex / Claude」需要装有 ChatGPT.app 或 Claude.app / Send to Codex / Claude needs ChatGPT.app or Claude.app installed
-
-> [!IMPORTANT]
-> Dukou 是独立项目，与腾讯无关联、未获其背书；它只接住微信自己通过系统共享服务交出的文件。
-> Dukou is an independent project, not affiliated with or endorsed by Tencent; it only catches what WeChat hands over through the system share service.
