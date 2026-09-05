@@ -1,3 +1,6 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
 ## 更新日志
 
 1. **首次启动直接进入设置向导**：装好后打开 Dukou 就会看到向导；由微信转发菜单在后台拉起时仍保持安静。
