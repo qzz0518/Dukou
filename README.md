@@ -37,7 +37,7 @@ macOS 微信 4.1.13 起，多选的聊天记录可以「合并转发」给第三
 再往前一步，「快捷微信转发」（实验）按群名和条数把指定群最近的消息半自动地导出、校验并粘贴给 agent，不用自己去多选。
 
 > [!NOTE]
-> 还没有发行版，目前只能从源码构建。
+> 早期版本。五条入口、暂存架、自动粘贴与 Sparkle 更新都已在本机端到端跑通；大文件、多显示器与全新机器上的权限引导仍待逐项验收。
 
 ## 功能
 
@@ -66,7 +66,19 @@ macOS 微信 4.1.13 起，多选的聊天记录可以「合并转发」给第三
 - 构建需要 Xcode 26（Swift 6.2），[mise](https://mise.jdx.dev) 可选
 - 「发给 Codex / Claude」需要装有 ChatGPT.app 或 Claude.app
 
-### 构建并安装
+### Homebrew
+
+```bash
+brew install --cask qzz0518/tap/dukou
+```
+
+后续更新用 `brew upgrade --cask dukou`，或者等 App 自己通过 Sparkle 提示。
+
+### DMG 安装
+
+前往 [Releases](https://github.com/qzz0518/Dukou/releases) 下载最新的 `Dukou-*.dmg`，打开后将 Dukou 拖入 Applications。Homebrew 与 Releases 是同一份经过 Developer ID 签名和 Apple 公证的 Universal 2 DMG。
+
+### 从源码构建
 
 ```bash
 git clone https://github.com/qzz0518/Dukou.git

@@ -37,7 +37,7 @@ The catch is that the "forward to other apps" list only shows apps that ship a s
 One step further, Quick WeChat forward (experimental) exports, verifies and pastes the latest messages of a named group semi-automatically, by group name and message count, with no manual selection.
 
 > [!NOTE]
-> There is no release yet; build from source.
+> Early release. The five entries, the shelf, automated pasting and Sparkle updates all work end to end on the author's Mac; large archives, multiple displays and the permission guide on a fresh machine are still being verified one by one.
 
 ## Features
 
@@ -66,7 +66,19 @@ One step further, Quick WeChat forward (experimental) exports, verifies and past
 - Xcode 26 (Swift 6.2) to build; [mise](https://mise.jdx.dev) is optional
 - ChatGPT.app or Claude.app for the Send to Codex / Claude entries
 
-### Build and install
+### Homebrew
+
+```bash
+brew install --cask qzz0518/tap/dukou
+```
+
+Update later with `brew upgrade --cask dukou`, or let the app offer the update itself through Sparkle.
+
+### DMG
+
+Download the latest `Dukou-*.dmg` from [Releases](https://github.com/qzz0518/Dukou/releases), open it and drag Dukou into Applications. Homebrew and Releases serve the same Developer ID-signed, Apple-notarized Universal 2 DMG.
+
+### Build from source
 
 ```bash
 git clone https://github.com/qzz0518/Dukou.git

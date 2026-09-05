@@ -92,7 +92,7 @@ else
 	echo "warning: NOTARIZE=0; this DMG is not publishable" >&2
 fi
 
-shasum -a 256 "$DMG" > "$DMG.sha256"
+(cd "$(dirname "$DMG")" && shasum -a 256 "$(basename "$DMG")" > "$(basename "$DMG").sha256")
 
 if [ "$GENERATE_APPCAST" = "1" ]; then
 	if [ "$NOTARIZE" != "1" ]; then
