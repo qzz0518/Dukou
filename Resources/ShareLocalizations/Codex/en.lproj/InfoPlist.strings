@@ -1,0 +1,3 @@
+/* The name shown in the system Share menu. */
+"CFBundleDisplayName" = "Send to Codex";
+"CFBundleName" = "Dukou";

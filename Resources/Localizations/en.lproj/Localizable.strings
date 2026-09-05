@@ -1,0 +1,282 @@
+/* Menu bar and status */
+"Dukou，暂存 %d 个文件" = "Dukou, %d files on the shelf";
+"Dukou，暂存架是空的" = "Dukou, the shelf is empty";
+"显示暂存架" = "Show Shelf";
+"清空暂存架" = "Clear Shelf";
+"最近记录" = "Recent";
+"暂无记录" = "No Records Yet";
+"全部记录…" = "All Records…";
+"清空记录" = "Clear History";
+"设置…" = "Settings…";
+"关于 Dukou…" = "About Dukou…";
+"退出 Dukou" = "Quit Dukou";
+
+/* Shelf */
+"1 个文件" = "1 file";
+"%d 个文件" = "%d files";
+"%@ 等 %d 个" = "%@ (%d files)";
+"%@ 等 %d 个文件，可拖出" = "%@ — %d files, draggable";
+"%@，可拖出" = "%@, draggable";
+"暂存架是空的" = "The shelf is empty";
+"展开文件列表" = "Show File List";
+"收起为图标" = "Collapse to Icon";
+"在 Finder 中显示" = "Show in Finder";
+"移出暂存架" = "Take Off the Shelf";
+"用默认 App 打开" = "Open with Default App";
+"移到废纸篓" = "Move to Trash";
+"全部移到废纸篓" = "Move All to Trash";
+"复制到剪贴板" = "Copy to Clipboard";
+"发给" = "Send To";
+"发给 %@" = "Send to %@";
+"添加应用…" = "Add an App…";
+
+/* Forward targets */
+"暂存架" = "Shelf";
+"所选应用" = "the chosen app";
+"发送到自定义" = "Send to Custom";
+"发给…" = "Send to…";
+"还没有添加自定义应用。" = "No custom apps added yet.";
+"已取消" = "Cancelled";
+"这条转发没有指定目标 App。" = "This forward has no target app.";
+"Codex" = "Codex";
+"Claude" = "Claude";
+"剪贴板" = "the clipboard";
+
+/* Share extension — no interface; only a failure still speaks */
+"系统没有返回文件。" = "The system returned no file.";
+"没能接住这次转发：%@" = "Couldn't receive that share: %@";
+
+/* Import errors */
+"无法访问共享容器 %@。" = "Cannot reach the shared container %@.";
+"这项内容不是 Dukou 能保存的文件（%@）。" = "Dukou cannot save this item as a file (%@).";
+"未知类型" = "unknown type";
+"这次分享没有包含任何文件。" = "This share contained no files.";
+"批次清单无法读取：%@" = "The batch manifest could not be read: %@";
+
+/* Auto-paste */
+"文件已在剪贴板，去 %@ 按 ⌘V 就行。" = "The files are on the clipboard — press ⌘V in %@.";
+"路径已在剪贴板，去 %@ 按 ⌘V 就行。" = "The path is on the clipboard — press ⌘V in %@.";
+"开启自动粘贴" = "Enable Auto-Paste";
+"放到暂存架" = "Put on the Shelf";
+"这台 Mac 上没有找到 %@。" = "%@ is not installed on this Mac.";
+"%@ 没有切到前台，已经放弃自动粘贴。" = "%@ never came to the front, so the paste was abandoned.";
+"系统没有接受这次按键事件。" = "The system did not accept the keystroke.";
+"Dukou 还没有「辅助功能」权限，没法代你按 ⌘V。" = "Dukou does not have Accessibility permission yet, so it cannot press ⌘V for you.";
+
+/* Shelf coach mark */
+"拖出去就送达；连续暂存会叠在一起。" = "Drag it out and it is delivered; new stashes pile onto the same shelf.";
+"知道了" = "Got It";
+
+/* Permission guide */
+"把 **Dukou** 拖进上方列表，然后打开它的开关" = "Drag **Dukou** into the list above, then switch it on";
+"已授权，转发时可以自动粘贴了。" = "Granted — forwards can paste automatically now.";
+"关闭引导" = "Close Guide";
+"Dukou 应用，拖到辅助功能列表" = "The Dukou app, drag into the Accessibility list";
+
+/* Settings window · navigation */
+"通用" = "General";
+"入口" = "Entries";
+"权限" = "Permissions";
+"记录" = "History";
+"关于" = "About";
+
+/* Settings window · General */
+"启动" = "Startup";
+"登录时自动启动" = "Open at login";
+"开机后静默出现在菜单栏，转发和暂存架才会立刻响应。" = "Appears quietly in the menu bar after a restart, so forwards and the shelf react immediately.";
+"还需要在系统设置里允许。" = "It still needs your approval in System Settings.";
+"打开登录项设置" = "Open Login Items Settings";
+"停靠位置" = "Docked corner";
+"暂存架出现时停在这个角落；拖到别处后会记住，直到你再改这里。" = "The shelf appears in this corner; drag it elsewhere and it stays there until you change this.";
+"左上" = "Top Left";
+"右上" = "Top Right";
+"左下" = "Bottom Left";
+"右下" = "Bottom Right";
+"忘记拖动过的位置" = "Forget the Dragged Position";
+"自动清理" = "Auto-cleanup";
+"不在暂存架上的记录，超过这个时长自动移到废纸篓。" = "Records that are not on the shelf move to the Trash once they are older than this.";
+"1 天" = "1 day";
+"7 天" = "7 days";
+"30 天" = "30 days";
+"从不" = "Never";
+"设置向导" = "Setup guide";
+"重新运行设置向导" = "Run the setup guide again";
+"四步走一遍：入口、暂存架、权限、完成。" = "Four steps: entries, the shelf, permissions, done.";
+"重新运行" = "Run Again";
+
+/* Settings window · Entries */
+"微信「转发到其他应用」里出现哪些入口，这里说了算。关掉的那条立刻从菜单里消失。" = "These switches decide which entries WeChat’s Forward to Another App menu shows. Switch one off and it leaves the menu right away.";
+"转发菜单里的入口" = "Entries in the forward menu";
+"暂存到渡口" = "Stash in Dukou";
+"放到暂存架，自己拖到任何 App。" = "Puts them on the shelf so you can drag them into any app.";
+"激活 ChatGPT 并直接粘贴到输入框。" = "Brings ChatGPT forward and pastes straight into its input.";
+"激活 Claude 并直接粘贴到输入框。" = "Brings Claude forward and pastes straight into its input.";
+"只放进剪贴板，去哪儿按 ⌘V 由你决定。" = "Puts them on the clipboard and leaves the ⌘V to you.";
+"转发时从你自己的清单里挑一个 App，激活它并粘贴。" = "Pick an app from your own list when you forward; Dukou brings it forward and pastes.";
+"未注册" = "Not registered";
+"Dukou 需要安装在「应用程序」文件夹里，系统才会登记这些入口。" = "macOS only registers these entries once Dukou lives in your Applications folder.";
+"也可以在「系统设置 → 登录项与扩展 → 共享」里管理。" = "You can also manage them in System Settings → Login Items & Extensions → Sharing.";
+"打开系统设置" = "Open System Settings";
+"「发送到自定义」的应用" = "Apps for Send to Custom";
+"还没有添加应用。加进来的 App 会出现在「发送到自定义」的面板里。" = "No apps yet. Whatever you add here shows up in the Send to Custom panel.";
+"未安装" = "Not installed";
+"移除" = "Remove";
+"移除 %@" = "Remove %@";
+"添加应用" = "Add App";
+"运行中的应用程序" = "Running Applications";
+"手动从访达中选择…" = "Choose in Finder…";
+"只粘贴文件路径" = "Paste path only";
+"给终端类应用用：粘贴的是带引号的文件路径，跟把文件拖进终端一样。" = "For terminal-style apps: pastes the quoted file path, exactly as dropping the file on a terminal would.";
+"怎么用" = "How to use it";
+"打开要用的入口" = "Switch on the entries you want";
+"上面那几个开关，拨一下就生效，随时能再改。" = "The switches above take effect immediately, and you can change them any time.";
+"从微信转发" = "Forward from WeChat";
+"多选聊天记录 → 转发到其他应用 → 选你要的那一条。" = "Select chats → Forward to Another App → pick the entry you want.";
+"剩下的交给 Dukou" = "Dukou takes it from there";
+"转发类入口会自己激活目标 App 并粘贴；「暂存到渡口」会把文件放到屏幕角落的暂存架，拖走就消失。" = "A forwarding entry brings the target app up and pastes; Stash in Dukou puts the files on the shelf in the screen corner you picked, and dragging them away clears it.";
+
+/* Settings window · Permissions */
+"系统权限" = "System permissions";
+"辅助功能" = "Accessibility";
+"已授权" = "Granted";
+"未授权" = "Not granted";
+"引导授权" = "Show Me How";
+"辅助功能不会弹系统授权框，需要把 Dukou 拖进列表；授权后立即生效，不必重启。" = "Accessibility never prompts: you drag Dukou into the list yourself. It takes effect immediately, with no restart.";
+
+/* Settings window · History */
+"共 %d 条 · 占用 %@" = "%d in history · %@ on disk";
+"今天 %@" = "Today %@";
+"放回暂存架" = "Put Back";
+"在暂存架上" = "On the shelf";
+"已送达" = "Delivered";
+"已复制" = "Copied";
+"未送达" = "Not delivered";
+"已移出" = "Taken off";
+"未执行" = "Not carried out";
+"更多操作" = "More Actions";
+"还没有记录" = "Nothing here yet";
+"从微信转发到任意一个 Dukou 入口后，这里会列出来。" = "Forward from WeChat to any Dukou entry and it will be listed here.";
+
+/* Settings window · About */
+"版本 %@ (%@)" = "Version %@ (%@)";
+"Dukou 做什么" = "What Dukou does";
+"在微信的转发菜单里，直接把聊天记录送到你要用的地方。" = "Send chat history straight from WeChat's forward menu to wherever you need it.";
+"聊天文件在本机处理，渡口不会上传聊天内容。文件会按清理设置保留，可随时在「记录」中管理。" = "Chat files are processed on this Mac. Dukou does not upload your conversations. Files follow your retention settings and can be managed in History.";
+"链接" = "Links";
+"源码与问题反馈" = "Source and issues";
+"作者" = "Author";
+"打开" = "Open";
+
+/* First-run guide */
+"完成" = "Done";
+"第 %d 步，共 %d 步" = "Step %d of %d";
+"已完成" = "Completed";
+"未完成" = "Not completed";
+"继续" = "Continue";
+"上一步" = "Back";
+"把微信的转发菜单接到你要去的地方" = "Point WeChat’s forward menu at where you work";
+"把微信里的聊天记录压缩包接住，再拖给任何一个 App。" = "Dukou catches the chat archive WeChat hands over, ready for you to drag into any app.";
+"以后随时能在设置 → 入口 里改。" = "You can change these any time in Settings → Entries.";
+"转发到其他应用" = "Forward to Another App";
+"暂存到渡口，再拖到任何地方" = "Stash it in Dukou, then drag it anywhere";
+"用「暂存到渡口」转发过来的文件，都停在这个方块上。" = "Everything forwarded through Stash in Dukou waits on this one square.";
+"可以叠加：连续暂存几次，都会摞在同一个架子上，右上角的数字就是件数。" = "They stack: stash several times over and it all piles onto one shelf, with the count in the corner.";
+"拖出去就送达：把图标拖进任何 App 或文件夹，文件就过去了，架子随之清空；文件本身还留在「记录」里。" = "Drag it out to deliver it: drop the icon into any app or folder and the files go there, clearing the shelf — the files themselves stay in History.";
+"✕ 移出架子，⌄ 展开成列表逐个拖；右键还能直接发给 Codex / Claude。" = "✕ clears the shelf, ⌄ expands it into a list you can drag row by row, and a right-click sends straight to Codex or Claude.";
+"聊天记录.zip" = "chat-history.zip";
+"终端" = "Terminal";
+"让 Dukou 代你按 ⌘V" = "Let Dukou press ⌘V for you";
+"用于操作微信，以及激活目标应用并粘贴；只暂存或复制不需要。" = "Used to control WeChat and bring the destination app forward to paste. Stashing and copying do not need it.";
+"可以先跳过，第一次转发失败时 Dukou 会再引导一次。" = "You can skip this — Dukou will offer to walk you through it the first time a forward fails.";
+"稍后再说" = "Later";
+"好了" = "All set";
+"去微信多选聊天记录 → 转发到其他应用，就能看到这些入口了。" = "In WeChat, select chats → Forward to Another App, and these entries will be waiting.";
+"开始使用" = "Start Using Dukou";
+"打开设置" = "Open Settings";
+/* Quick WeChat Forward */
+"%.1f 秒" = "%.1f s";
+"%@（未运行）" = "%@ (not running)";
+"再次执行" = "Run again";
+"刷新运行中的应用" = "Refresh running apps";
+"前台应用或群聊发生了变化，已停止微信操作。" = "The foreground app or chat changed. WeChat automation stopped.";
+"取消" = "Cancel";
+"取消本次转发" = "Cancel this forward";
+"同时收到了多次分享，无法确认本次文件，已停止自动粘贴。" = "Multiple shares arrived together. Automatic paste stopped because the files could not be attributed.";
+"天" = "days";
+"导出记录与所选消息不一致，已停止自动粘贴，文件已保留。" = "The export does not match the selected messages. Automatic paste stopped; the files were kept.";
+"小时" = "hours";
+"已取消，已收到的文件保留在暂存架。" = "Cancelled. Files already received remain on the shelf.";
+"已向 %@ 粘贴 %d 个 ZIP · %d 条消息" = "Pasted into %@ · %d ZIPs · %d messages";
+"开启权限" = "Enable access";
+"开始转发" = "Start forwarding";
+"微信导出的 ZIP 无法校验，文件已保留在暂存架。" = "The WeChat ZIP could not be verified. The files remain on the shelf.";
+"微信没有显示“%@”。请回到普通聊天窗口后重试。" = "WeChat did not show “%@”. Return to the normal chat window and retry.";
+"微信群名称" = "WeChat group name";
+"微信转发需要辅助功能权限。" = "WeChat forwarding needs Accessibility access.";
+"忘记这个群聊" = "Forget this group";
+"快捷微信转发" = "Quick WeChat Forward";
+"按最新消息向前选取，每个 ZIP 最多 100 条；一次任务最多 2,000 条。" = "Select the latest messages, with up to 100 per ZIP and 2,000 per task.";
+"无法准确选中这一批消息，已停止。请缩小范围后重试。" = "This batch could not be selected accurately. Try a smaller range.";
+"无法识别微信导出的聊天记录格式，文件已保留。" = "The WeChat export format was not recognized. The files were kept.";
+"最近" = "Last";
+"最近 %d 天" = "Last %d days";
+"最近 %d 小时" = "Last %d hours";
+"最近 %d 条消息" = "Last %d messages";
+"未能读到范围起点。请缩小范围，或先在微信中加载更早的聊天记录。" = "The beginning of the range could not be reached. Choose a smaller range or load older history in WeChat first.";
+"条消息" = "messages";
+"正在停止…" = "Stopping…";
+"正在打开微信群聊…" = "Opening the WeChat group…";
+"正在粘贴到 %@…" = "Pasting into %@…";
+"正在运行的应用" = "Running apps";
+"没有找到「暂存到渡口」分享入口。请在设置的「入口」中启用它。" = "The Keep in Dukou share entry was not found. Enable it in Settings → Entries.";
+"没有找到唯一匹配的群聊。请先在微信中打开这个群，再重新执行。" = "A unique matching group was not found. Open it in WeChat, then run again.";
+"等待开始微信转发…" = "Waiting to start WeChat forwarding…";
+"等待微信导出超时。已收到的文件会保留在暂存架。" = "WeChat export timed out. Files already received remain on the shelf.";
+"粘贴到" = "Paste into";
+"粘贴已完成，但部分记录状态未能保存。" = "Pasting finished, but some history statuses could not be saved.";
+"粘贴文件" = "Paste files";
+"粘贴方式" = "Paste format";
+"粘贴路径" = "Paste paths";
+"范围数量" = "Range amount";
+"记住的群聊" = "Remembered groups";
+"请先关闭微信的聊天记录窗口，或退出正在进行的多选、转发。" = "Close WeChat history or finish the current selection or forward before starting.";
+"请先在目标应用中选好输入位置。完成后自动按 ⌘V，成功执行的群聊和配置会被记住。" = "Focus the destination input first. Dukou presses ⌘V when ready and remembers the group and settings after a successful run.";
+"请先打开并登录微信。" = "Open WeChat and sign in first.";
+"请填写群名和有效范围，并选择一个正在运行的应用。" = "Enter a group name and a valid range, then select a running app.";
+"请输入 1–%d 之间的整数。" = "Enter an integer from 1 to %d.";
+"读取当前群" = "Use current group";
+"转发内容" = "Messages to forward";
+"这个时间范围内没有消息。" = "There are no messages in this time range.";
+"选择微信群和消息范围，自动合并为微信原生 ZIP，粘贴到你正在使用的应用。" = "Choose a WeChat group and a message range. Dukou exports native WeChat ZIPs and pastes them into your chosen app.";
+"选择正在运行的应用" = "Choose a running app";
+"配置微信转发…" = "Configure WeChat forwarding…";
+
+// WeChat selection recovery
+"微信消息列表尚未稳定。请等待加载完成后重试。" = "The WeChat message list has not settled. Wait for loading to finish, then try again.";
+"正在选择并导出消息 · 已完成 %d 条" = "Selecting and exporting messages · %d complete";
+"没有定位到“转发到其他应用”按钮，已停止。请保持微信转发窗口完整可见。" = "Could not locate Forward to Other Apps. Keep the entire WeChat forward window visible and try again.";
+"这个转发界面需要识别按钮位置。请在系统设置中为渡口开启屏幕录制权限后重试。" = "This forward layout needs visual button recognition. Enable Screen Recording for Dukou in System Settings and try again.";
+"按时间选取暂未开放，请改用条数。" = "Time ranges are not available yet. Select a message count instead.";
+"改用条数" = "Use message count";
+
+"重置位置" = "Reset Position";
+
+/* Software updates — About pane and status menu */
+"检查更新…" = "Check for Updates…";
+
+/* Attached prompt — Entries and quick WeChat forward */
+"附加 Prompt" = "Attached Prompt";
+"发给 Codex、Claude 或自定义应用时，把选中的 Prompt 一起粘过去。" = "Pasted along with the files when sending to Codex, Claude or a custom app.";
+"导出的记录粘贴到目标应用时，把选中的 Prompt 一起粘过去。" = "Pasted along with the exported archive into the target app.";
+"选中的那条会被附加，最多 3 条，两页共用。" = "The selected one is attached. Up to three, shared by both panes.";
+"添加 Prompt" = "Add Prompt";
+"使用这条 Prompt" = "Use this prompt";
+"Prompt 内容" = "Prompt text";
+"删除这条 Prompt" = "Delete this prompt";
+"附件是微信导出的聊天记录（TXT 加图片、视频）。请通读，按时间线总结要点、结论和待办。" = "This is a WeChat chat-history export (TXT plus images and videos). Read it through and summarize the key points, decisions and to-dos in order.";
+
+/* Software updates — General pane */
+"软件更新" = "Software Updates";
+"自动检查更新" = "Check for updates automatically";
+"每天检查一次，由 Sparkle 安全下载并安装。" = "Checks once a day. Sparkle downloads and installs securely.";
+"当前版本" = "Current version";

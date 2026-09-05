@@ -1,0 +1,56 @@
+# Swift / SwiftPM
+.build/
+.swiftpm/
+
+# Build output
+dist/
+
+# Xcode, if anyone opens the package there
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+*.xcresult
+
+# Working notes: design records, implementation plans, field measurements and
+# the research behind the WeChat automation. They read as the diary of one Mac
+# and one WeChat build rather than as documentation, so they stay local.
+/docs/
+/DUKOU_MACOS_IMPLEMENTATION_RESEARCH.md
+
+# One-off probes used to recover WeChat's export behaviour. The verified
+# implementation lives in Sources/ and Tests/; shipping these would ship a
+# second, unmaintained automation client beside the app.
+/Scripts/wechat-*
+/Scripts/verify-wechat-export.py
+
+# macOS
+.DS_Store
+._*
+
+# Local diagnostics
+*.log
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Signing material, should it ever be generated locally
+*.p12
+*.pem
+*.key
+*.cer
+*.p8
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local design exploration output
+output/
+
+# Python byte-code from local scripts
+__pycache__/
+*.pyc

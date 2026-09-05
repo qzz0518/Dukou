@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Deliberately NOT sandboxed, and the extensions deliberately still are.
+	     The Share-menu entries are switched on and off with `pluginkit -e
+	     use|ignore`, which is the only public way to reach that state at all.
+	     Measured on 2026-09-05 (macOS 15.7, signed dist/Dukou.app): from inside
+	     the sandbox every pluginkit call — `-m` as well as `-e` — exits 1 with
+	     an empty stdout and `match: unauthorized discovery flag (PKDiscoverAll)`
+	     on stderr, because pkd refuses a sandboxed client. Without the
+	     entitlement the same calls exit 0 and print `+`/`-`. Dukou is not
+	     shipped through the App Store, and the privacy claim it actually makes
+	     is "no network entitlement, files never leave the Mac" — that claim is
+	     unaffected. The extensions keep the sandbox: they run inside WeChat's
+	     share sheet, handle untrusted attachments, and never call pluginkit. -->
+	<!-- The only channel between the extensions and this app. It must match
+	     DukouShare.entitlements and the DKAppGroupIdentifier in both plists. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>H2P566W3PA.dev.dukou.shared</string>
+	</array>
+	<!-- Deliberately absent: no network client, no server, no user-selected
+	     file access. Dukou reads what the extension handed it and hands it on. -->
+</dict>
+</plist>

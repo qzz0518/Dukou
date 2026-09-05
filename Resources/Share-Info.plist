@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh-Hans</string>
+	<!-- Identity keys are placeholders. Scripts/make-app.sh writes the real
+	     value for each Share-menu entry from Scripts/share-slots.sh. -->
+	<key>CFBundleDisplayName</key>
+	<string>暂存到渡口</string>
+	<key>CFBundleExecutable</key>
+	<string>DukouShare</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.dukou.Dukou.Share</string>
+	<key>DKShareAction</key>
+	<string>shelf</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>DukouShare</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>DKAppGroupIdentifier</key>
+	<string>H2P566W3PA.dev.dukou.shared</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>NSExtensionActivationRule</key>
+			<dict>
+				<key>NSExtensionActivationDictionaryVersion</key>
+				<integer>2</integer>
+				<!-- Files only. The attachment and text keys are deliberately
+				     absent: Dukou can save a file, and offering itself for a
+				     plain-text or web-page share would be a menu entry that
+				     cannot keep its promise.
+
+				     32 is Dukou's own ceiling for one share, not a system
+				     limit; revisit it against a real multi-chat forward. -->
+				<key>NSExtensionActivationSupportsFileWithMaxCount</key>
+				<integer>32</integer>
+			</dict>
+		</dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.share-services</string>
+		<!-- A view controller, because ShareKit asserts without one: measured
+		     2026-09-05 with an NSExtensionRequestHandling principal class, which
+		     crashed in -[NSSharingUIExtensionContext viewController] every time.
+		     Dukou's is 1×1 and transparent. Resolved through the Objective-C
+		     runtime, so the class carries an explicit @objc name instead of a
+		     mangled Swift one. -->
+		<key>NSExtensionPrincipalClass</key>
+		<string>DKShareViewController</string>
+	</dict>
+</dict>
+</plist>
