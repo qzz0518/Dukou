@@ -139,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             OnboardingFlow(
                 preferences: preferences,
                 authorization: authorization,
-                finish: { [weak self] openSettings in self?.finishOnboarding(openSettings: openSettings) }
+                finish: { [weak self] in self?.finishOnboarding() }
             )
         }
 
@@ -152,8 +152,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let tab = pendingSettingsTab {
             pendingSettingsTab = nil
             openMainWindow(tab)
+        } else if !preferences.onboardingCompleted, !Self.launchedInBackground {
+            // A person's first launch — Finder, Launchpad, Spotlight — gets the
+            // guide at once. Nothing else would happen: an accessory app is not
+            // activated by the system, so without this a fresh install put a
+            // menu bar icon on screen and nothing that said what to do with it.
+            onboardingWindow?.show()
         }
     }
+
+    /// The share extension says so when it is the one starting the app
+    /// (`LaunchArgument.background`): the user is in WeChat at that moment, and
+    /// a window over it would undo the point of an extension with no screen.
+    private static let launchedInBackground = CommandLine.arguments.contains(LaunchArgument.background)
 
     /// First-run guidance waits for the user to actually bring Dukou forward.
     /// The share extension launches this app in the background on purpose, and
@@ -173,11 +184,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// step 3 is not an answer, so it comes back on the next activation — and
     /// the step counter goes back to the start, because 重新运行设置向导 means
     /// run it, not resume it.
-    private func finishOnboarding(openSettings: Bool) {
+    ///
+    /// 设置 opens as the guide closes. The guide only switched on entries and
+    /// asked for one permission; a new user's next questions — 停靠位置, 附加
+    /// Prompt, 微信转发 — all live there, and a window that simply vanished
+    /// left them with a menu bar icon they had not yet learned to look for.
+    private func finishOnboarding() {
         preferences.onboardingCompleted = true
         preferences.onboardingStep = 0
         onboardingWindow?.close()
-        if openSettings { openMainWindow(.general) }
+        openMainWindow(.general)
     }
 
     /// One door for every forward, wherever it was asked for: an arriving batch,

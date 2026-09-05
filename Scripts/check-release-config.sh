@@ -235,8 +235,11 @@ if [ ! -f "$DMG_BACKGROUND" ]; then
 fi
 DMG_WIDTH="$(sips -g pixelWidth "$DMG_BACKGROUND" 2>/dev/null | awk '/pixelWidth:/ {print $2}')"
 DMG_HEIGHT="$(sips -g pixelHeight "$DMG_BACKGROUND" 2>/dev/null | awk '/pixelHeight:/ {print $2}')"
-if [ "$DMG_WIDTH" != "660" ] || [ "$DMG_HEIGHT" != "400" ]; then
-	echo "DMG background must be exactly 660x400, got ${DMG_WIDTH}x${DMG_HEIGHT}" >&2
+DMG_DPI="$(sips -g dpiWidth "$DMG_BACKGROUND" 2>/dev/null | awk '/dpiWidth:/ {print $2}')"
+# A 2x asset: Finder reads the point size from the DPI, and a 1x sheet is
+# visibly soft on every Retina display.
+if [ "$DMG_WIDTH" != "1320" ] || [ "$DMG_HEIGHT" != "800" ] || [ "${DMG_DPI%.*}" != "144" ]; then
+	echo "DMG background must be 1320x800 pixels at 144 dpi (660x400 pt), got ${DMG_WIDTH}x${DMG_HEIGHT} @ ${DMG_DPI:-?} dpi" >&2
 	exit 1
 fi
 

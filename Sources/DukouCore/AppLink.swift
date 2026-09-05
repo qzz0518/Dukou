@@ -30,3 +30,12 @@ public enum AppLink {
         return path.isEmpty ? nil : path
     }
 }
+
+/// What the share extension passes when it starts the app: not a person
+/// opening Dukou, so a first run keeps its guide for when one does.
+///
+/// Declared beside `AppLink` for the same reason: the extension that sends it
+/// and the app delegate that reads it have to agree on the spelling.
+public enum LaunchArgument {
+    public static let background = "--background"
+}

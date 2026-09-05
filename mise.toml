@@ -42,8 +42,8 @@ description = "Validate Simplified Chinese and English localization resources"
 run = "swift Scripts/check-localizations.swift"
 
 [tasks.dmg-background]
-description = "Regenerate the 660x400 Finder background from the reviewed DMG artwork"
-run = "swift Scripts/make-dmg-background.swift Resources/DMG/background-source.png Resources/DMG/background.png"
+description = "Regenerate the 660x400 Retina Finder background for the disk image"
+run = "swift Scripts/make-dmg-background.swift Resources/DMG/background.png"
 
 [tasks.release-dry-run]
 description = "Build a Developer ID-signed Universal 2 DMG without notarizing it"

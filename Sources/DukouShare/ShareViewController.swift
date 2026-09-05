@@ -267,6 +267,10 @@ final class ShareViewController: NSViewController {
         // floating panel that takes the keyboard without taking the app forward.
         configuration.activates = false
         configuration.addsToRecentItems = false
+        // Tells a cold-launched app this is not a person opening it, so a
+        // first run stays silent here and shows its guide when the user
+        // actually comes to Dukou.
+        configuration.arguments = [LaunchArgument.background]
 
         NSWorkspace.shared.openApplication(at: appURL, configuration: configuration)
     }

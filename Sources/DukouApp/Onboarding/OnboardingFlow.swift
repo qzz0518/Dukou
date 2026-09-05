@@ -18,9 +18,9 @@ import UniformTypeIdentifiers
 struct OnboardingFlow: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var authorization: AccessibilityAuthorization
-    /// Closes the guide. `openSettings` is the only thing the last step can ask
-    /// for beyond that.
-    let finish: (_ openSettings: Bool) -> Void
+    /// Closes the guide. The app opens 设置 behind it, so the last step has
+    /// nothing else to ask.
+    let finish: () -> Void
 
     /// One probe for the whole guide, and the very same list the 入口 pane
     /// draws — §11.2 asks for one implementation of these switches, not two.
@@ -30,7 +30,7 @@ struct OnboardingFlow: View {
     init(
         preferences: Preferences,
         authorization: AccessibilityAuthorization,
-        finish: @escaping (_ openSettings: Bool) -> Void
+        finish: @escaping () -> Void
     ) {
         self.preferences = preferences
         self.authorization = authorization
@@ -245,14 +245,10 @@ struct OnboardingFlow: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 12)
 
-            HStack(spacing: Space.m) {
-                Button(L10n.text("开始使用")) { finish(false) }
-                    .buttonStyle(InkButtonStyle())
-                    .keyboardShortcut(.defaultAction)
-                Button(L10n.text("打开设置")) { finish(true) }
-                    .buttonStyle(GhostButtonStyle())
-            }
-            .padding(.top, 34)
+            Button(L10n.text("完成")) { finish() }
+                .buttonStyle(InkButtonStyle())
+                .keyboardShortcut(.defaultAction)
+                .padding(.top, 34)
 
             Spacer(minLength: 0)
         }
