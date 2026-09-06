@@ -17,7 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.1</string>
+	<string>0.1.2</string>
 	<!-- The only caller is Dukou's own 「发送到自定义」 extension: with an empty
 	     target list it has to hand the user over to the settings window, and an
 	     app extension cannot use NSWorkspace to open anything. See
@@ -34,7 +34,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>2</string>
+	<string>3</string>
 	<!-- The app group container both bundles read. Kept in Info.plist rather
 	     than hard-coded in Swift so one build-script substitution can retarget
 	     the app and its extension together. -->
