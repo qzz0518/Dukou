@@ -140,7 +140,13 @@ final class WeChatAccessibility {
     private var locator = ""
     private var visualMilliseconds = 0.0
     private var lastNodeCount = 0
+    private var scanTruncated = false
+    private var controlFailure: [String: Any]?
     private var resumedBatches = 0
+    /// What the prefetch pass cost and what it loaded, for diagnostics only.
+    private var prefetchSeconds = 0.0
+    private var prefetchRows = 0
+    private var prefetchLoaded = 0
     private var snapshots: [[String: Any]] = []
 
     init(chat: String, cancellation: WeChatCancellation, progress: @escaping (String) -> Void) throws {
@@ -177,6 +183,9 @@ final class WeChatAccessibility {
             if node.role != "AXMenuBar" { queue.append(contentsOf: node.children) }
         }
         lastNodeCount = nodes.count
+        // A tree larger than the walk would mean the control being looked for
+        // may simply never have been visited.
+        scanTruncated = nodes.count >= 2000
         return nodes
     }
     private func matches(_ name: String) -> Bool { WeChatForwardPreset.normalizedChat(name) == chat }
@@ -230,16 +239,77 @@ final class WeChatAccessibility {
             node.strings.contains { $0 == label || $0 == label + "…" || $0 == label + "..." }
         }
     }
+
+    /// The same control, found without assuming what kind of thing it is.
+    ///
+    /// `control` asks for one of the three roles WeChat's own buttons have
+    /// answered as. A build that dresses the same row as something else — a
+    /// cell, a group, a plain image with a label — puts it out of reach while
+    /// it sits on screen, pressable, in front of the user; 选择电脑中的应用 on
+    /// macOS 26 is that report. So the fallback drops the role entirely and
+    /// keeps only what makes a control a control: enabled, on screen, and
+    /// carrying this exact text once spacing is ignored.
+    ///
+    /// It must also be the only such thing in the tree. Labels like 取消 repeat
+    /// across a sheet and its parent window, and pressing the wrong one is
+    /// worse than reporting that this could not be found.
+    private func looseControl(_ label: String, in nodes: [WCNode]) -> WCNode? {
+        let wanted = label.filter { !$0.isWhitespace }
+        let matches = nodes.filter { node in
+            node.enabled && !node.rect.isEmpty && node.role != "AXWindow" &&
+            node.strings.contains { $0.filter { !$0.isWhitespace } == wanted }
+        }
+        return matches.count == 1 ? matches.first : nil
+    }
+
     private func waitControl(_ label: String, timeout: Double = 2) throws -> WCNode {
         let deadline = clock() + timeout
+        var relaxed: WCNode?
         repeat {
             try frontmost()
             let nodes = try scan()
             guard chatMatches(nodes) else { throw WeChatAutomationError.focusChanged }
             if let node = control(label, in: nodes) { return node }
+            // Kept, not taken: the strict match may still be a frame away, and
+            // it is the one that has been verified against this UI.
+            if relaxed == nil { relaxed = looseControl(label, in: nodes) }
             try pause(0.02)
         } while clock() < deadline
+        if let relaxed {
+            locator = locator.isEmpty ? "loose-control" : locator + "+loose-control"
+            return relaxed
+        }
+        recordControlFailure(label)
         throw WeChatAutomationError.control(label)
+    }
+
+    /// What was on screen when a control could not be found.
+    ///
+    /// A layout that moves under a new macOS or WeChat build cannot be taught
+    /// in advance, and whoever hits it first is not holding a debugger. One
+    /// reproduction now leaves behind the role, label and geometry of
+    /// everything that was pressable, which is what a fix is made from.
+    ///
+    /// Message bodies, conversation names and the placeholder cells behind them
+    /// are left out: this is a report about controls, and it is a file the user
+    /// may well send someone.
+    private func recordControlFailure(_ label: String) {
+        let nodes = (try? scan()) ?? []
+        controlFailure = [
+            "label": label,
+            "nodeCount": lastNodeCount,
+            "scanTruncated": scanTruncated,
+            "candidates": nodes.filter {
+                // AXCheckBox is a person in the recipient list or a message in
+                // the transcript — never a control this searches for, and both
+                // carry names this file should not.
+                $0.enabled && !$0.rect.isEmpty && $0.role != "AXCheckBox" && $0.role != "AXWindow" &&
+                $0.id != "chat_bubble_item_view" && $0.id != "virtual_cell" && !$0.id.hasPrefix("session_item_")
+            }.prefix(80).map { node -> [String: Any] in
+                ["role": node.role, "id": node.id, "strings": node.strings.map { String($0.prefix(24)) },
+                 "rect": [Int(node.rect.minX), Int(node.rect.minY), Int(node.rect.width), Int(node.rect.height)]]
+            },
+        ]
     }
     private func scroll(_ list: AXUIElement, delta: Int32, settle: Double = WeChatScrollStep.baseGesturePause) throws {
         let started = clock()
@@ -497,6 +567,148 @@ final class WeChatAccessibility {
         return (normal.rows[rebound], normal.list.rect)
     }
 
+    /// Messages WeChat has read into this conversation's list.
+    ///
+    /// The list carries one child per loaded message — a `virtual_cell`
+    /// placeholder for every one but the handful actually on screen — so its
+    /// child count is what has been read off disk, not what the conversation
+    /// holds. Measured 2026-09-07 on 4.1.13: a conversation opens with about
+    /// 36 of them and keeps what it gains, 180 then 218, after the list is
+    /// dragged back and returned to the newest message.
+    ///
+    /// Only meaningful at the newest message and at rest. Mid-scroll the count
+    /// is the buffer still ahead of the viewport, and it falls as the list
+    /// climbs into it — 180, 170, 159, … 34 — jumping back up each time WeChat
+    /// fetches the next thirty. Which is the whole problem, seen directly.
+    private func loadedMessages(_ list: AXUIElement) -> Int {
+        var count: CFIndex = 0
+        guard AXUIElementGetAttributeValueCount(list, "AXChildren" as CFString, &count) == .success else { return 0 }
+        return Int(count)
+    }
+
+    /// Load `target` messages of history before anything is selected, so the
+    /// batches that follow scroll over rows WeChat already holds.
+    ///
+    /// Measured 2026-09-07 on 4.1.13: dragging back over history WeChat has
+    /// not fetched runs at about 8 rows per second, and over history it has at
+    /// about 64. A five-hundred message selection crosses that boundary in
+    /// every one of its five batches, inside a per-batch budget sized for the
+    /// fast case — which is how it failed rather than merely dragged.
+    ///
+    /// Coming up short is not a failure: every message loaded is one a later
+    /// batch does not pay for.
+    private func prefetchHistory(target: Int) throws {
+        phase = "prefetch"
+        let started = clock()
+        defer { prefetchSeconds = clock() - started }
+        let deadline = started + WeChatPrefetch.budget(messages: target)
+        var page = try returnToLatest(from: try stablePage())
+        // A conversation dragged back this far before — earlier in this run, or
+        // by the user reading it — has nothing to fetch, and the pass costs
+        // nothing beyond the count it just read.
+        var loaded = loadedMessages(page.list.element)
+        var rounds = 0
+        while loaded < target, clock() < deadline, rounds < 3 {
+            rounds += 1
+            page = try dragBack(from: page, loaded: loaded, target: target, deadline: deadline)
+            // The count only means anything back at the newest message, so
+            // this is both the return leg and the measurement.
+            page = try returnToLatest(from: page)
+            let reached = loadedMessages(page.list.element)
+            // A round that loaded nothing is at the start of the conversation.
+            guard reached > loaded else { break }
+            loaded = reached
+        }
+        prefetchLoaded = loaded
+        // A gap the pass had to stretch belongs to the history it was reading
+        // off disk, not to the loaded rows the batches now scroll over. What it
+        // managed to tighten is worth keeping.
+        gesturePause = min(gesturePause, WeChatScrollStep.baseGesturePause)
+    }
+
+    /// One climb back through the conversation, from the newest message.
+    ///
+    /// Nothing here is tracked, clicked or selected — the climb only needs
+    /// WeChat to fetch the rows — so gestures go out in bursts with one settled
+    /// snapshot per burst instead of per gesture, and the rows a burst covered
+    /// are counted from the overlap it left, or estimated past it when it left
+    /// none. That estimate is why the caller checks the loaded count afterwards
+    /// rather than trusting this to have gone far enough.
+    private func dragBack(from start: Page, loaded: Int, target: Int, deadline: Double) throws -> Page {
+        phase = "prefetch"
+        var page = start
+        var travelled = page.rows.count
+        var burst = WeChatPrefetch.firstBurst
+        var perGesture = WeChatPrefetch.reach(delta: deltaCeiling)
+        var idle = 0
+        while travelled < target, clock() < deadline {
+            progress(L10n.format("正在加载更早的聊天记录 · 已加载 %d 条", max(loaded, travelled)))
+            let before = page
+            for _ in 0..<burst { try scroll(before.list.element, delta: deltaCeiling, settle: gesturePause) }
+            // A conversation being read off disk settles later than one in
+            // memory, and this is the pass that meets it there.
+            page = try stablePage(timeout: 5)
+            guard page.signature != before.signature else {
+                // Either the conversation has no more history, or WeChat is
+                // still fetching it. One more burst, spaced further apart,
+                // tells the two apart.
+                idle += 1
+                gesturePause = WeChatScrollStep.lengthened(gesturePause)
+                if idle >= 2 { break }
+                continue
+            }
+            idle = 0
+            let step = WeChatPrefetch.burst(from: before.data, to: page.data,
+                                            gestures: burst, delta: deltaCeiling, reach: perGesture)
+            travelled += step.rows
+            prefetchRows += step.rows
+            // A burst that left overlap is one WeChat clamped, and that is the
+            // only kind whose reach can be measured. Keeping a plausible one
+            // also hands the first batch a measured step instead of a careful.
+            if let measured = step.pointsPerGesture {
+                let gained = measured / Double(deltaCeiling)
+                if WeChatScrollStep.isPlausible(gain: gained) { perGesture = measured; gain = gained; gainMeasured = true }
+            }
+            burst = WeChatPrefetch.nextBurst(burst, clamped: step.clamped)
+            gesturePause = WeChatPrefetch.nextPause(gesturePause, clamped: step.clamped)
+        }
+        return page
+    }
+
+    /// Back to the newest message, however far away it is.
+    ///
+    /// One enormous gesture does not do it: WeChat clamps anything far past the
+    /// largest it honours to about 50 points, so the distance has to be covered
+    /// by gestures it does honour. Downwards is over rows WeChat already holds,
+    /// so they can go out in bursts with one settled snapshot between them.
+    private func returnToLatest(from start: Page) throws -> Page {
+        let resuming = phase
+        phase = "return-to-latest"
+        defer { phase = resuming }
+        var page = start
+        // Usually the list is already where this wants it — every batch anchor
+        // comes through here — so the first burst is small enough to find that
+        // out cheaply, and doubles only while there is still distance to cover.
+        var burst = 2
+        var idle = 0
+        let deadline = clock() + 45
+        while clock() < deadline {
+            let before = page.signature
+            for _ in 0..<burst {
+                try scroll(page.list.element, delta: -WeChatScrollStep.maximumDelta, settle: WeChatScrollStep.minimumGesturePause)
+            }
+            page = try stablePage(timeout: 5)
+            if page.signature == before {
+                idle += 1
+                if idle >= 2 { return page }
+            } else {
+                idle = 0
+                burst = min(8, burst * 2)
+            }
+        }
+        throw WeChatAutomationError.selection
+    }
+
     private func selectBatch(limit: Int, start: SelectionStart) throws -> Selection {
         phase = "select-anchor"
         let anchor: WCNode, viewport: CGRect
@@ -546,15 +758,14 @@ final class WeChatAccessibility {
                 do { try tracked.advance(page.data, older: delta > 0) } catch { throw WeChatAutomationError.selection }
             }
         case .latest:
-            var page = try stablePage()
-            var reachedLatest = false
-            for _ in 0..<40 {
-                let before = page.signature
-                try scroll(page.list.element, delta: -10_000)
-                page = try stablePage()
-                if page.signature == before { reachedLatest = true; break }
-            }
-            guard reachedLatest, let latest = page.rows.last, page.canCheck(latest) else { throw WeChatAutomationError.selection }
+            // This used to open with one -10_000 gesture. Measured twice on
+            // 2026-09-07 against 4.1.13, WeChat clamps a gesture that large to
+            // about 50 points — a single message — so it only ever looked like
+            // it worked, because the list is normally already at the newest
+            // message and the loop stopped on the first unchanged snapshot. A
+            // user who had scrolled up first found it could not get home.
+            let page = try returnToLatest(from: try stablePage())
+            guard let latest = page.rows.last, page.canCheck(latest) else { throw WeChatAutomationError.selection }
             anchor = latest; viewport = page.list.rect
         }
         let newest = try beginSelection(at: anchor, viewport: viewport)
@@ -652,34 +863,96 @@ final class WeChatAccessibility {
         }
     }
 
-    private func recipientSheet() throws -> (WCNode, WCNode, WCNode) {
-        let nodes = try scan()
-        guard let cancel = nodes.first(where: { $0.id == "cancel_btn" }),
-              let confirm = nodes.first(where: { $0.id == "confirm_btn" }), !confirm.enabled else { throw WeChatAutomationError.unsupportedLayout }
-        var current = cancel.element
-        for _ in 0..<10 {
-            let node = WCNode(current)
-            if node.role == "AXSheet", node.rect.contains(cancel.rect), node.rect.contains(confirm.rect) { return (node, cancel, confirm) }
-            guard let parent = wcAttribute(current, "AXParent"), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
-            current = parent as! AXUIElement
-        }
+    /// The forward sheet, once it has finished arriving.
+    ///
+    /// Waited for rather than sampled: 取消 is up before the sheet has settled,
+    /// and one look immediately after it has been seen to find no 确定 at all
+    /// and call the layout unsupported for a sheet that was merely animating.
+    ///
+    /// 确定 must still be disabled. It enables the moment a recipient is
+    /// selected, so requiring it off is also the check that nothing has been
+    /// selected by accident before this clicks anything.
+    private func recipientSheet(timeout: Double = 2) throws -> (WCNode, WCNode, WCNode) {
+        let deadline = clock() + timeout
+        repeat {
+            let nodes = try scan()
+            if let cancel = nodes.first(where: { $0.id == "cancel_btn" }),
+               let confirm = nodes.first(where: { $0.id == "confirm_btn" }), !confirm.enabled {
+                var current = cancel.element
+                for _ in 0..<10 {
+                    let node = WCNode(current)
+                    if node.role == "AXSheet", node.rect.contains(cancel.rect), node.rect.contains(confirm.rect) { return (node, cancel, confirm) }
+                    guard let parent = wcAttribute(current, "AXParent"), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+                    current = parent as! AXUIElement
+                }
+            }
+            try pause(0.04)
+        } while clock() < deadline
+        recordControlFailure("recipient-sheet")
         throw WeChatAutomationError.unsupportedLayout
     }
 
-    private func externalSharePoint(_ sheet: WCNode, cancel: WCNode, confirm: WCNode) throws -> CGPoint {
-        let bundle = app.bundleURL.flatMap { Bundle(url: $0) }
-        // A small tolerance accounts for AppKit rounding (505 vs 506 pt on the
-        // same build). Geometry changes use a localized visual fallback.
-        if bundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == "4.1.13",
-           abs(sheet.rect.width - 720) <= 3, abs(sheet.rect.height - 560) <= 3,
-           abs(cancel.rect.minX - sheet.rect.minX - 396) <= 3, abs(cancel.rect.minY - sheet.rect.minY - 506) <= 3,
-           abs(confirm.rect.minX - sheet.rect.minX - 532) <= 3, abs(confirm.rect.minY - sheet.rect.minY - 506) <= 3 {
-            locator = "anchored-layout"
-            return CGPoint(x: sheet.rect.minX + 245, y: sheet.rect.minY + 204)
-        }
+    /// Where 转发到其他应用 is, from the shape of the list it lives in.
+    ///
+    /// The row sits in the recipient list, below whatever promotions WeChat is
+    /// showing and above the contacts. There is one promotion per companion app
+    /// installed — 企业微信, WorkBuddy — so there may be none, one or two of
+    /// them, and the row moves down by one strip for each. A fixed offset from
+    /// the sheet could only ever match one of those: this machine has one
+    /// promotion, macOS 26 with none put the row 125 points higher, and the old
+    /// offset landed in the contact list, which is a click that selects a
+    /// person rather than one that misses.
+    ///
+    /// What does hold across all three is the order and the labels. Promotions
+    /// and the tab row carry no accessibility label; every contact carries its
+    /// name. So the tab row is the last unlabelled row before the first labelled
+    /// one, however many strips are stacked above it — checked against this
+    /// machine, where it lands on exactly the point the old offset computed.
+    ///
+    /// Horizontally the row is 最近聊天 | 创建聊天 | 转发到其他应用 and this is
+    /// the third of them, 245 points into the 320 the list is wide. That
+    /// proportion does not move with the promotions; only the row does.
+    private func externalShareRow(in nodes: [WCNode]) -> CGPoint? {
+        guard let list = nodes.first(where: { $0.id == "sp_to_select_contact_list" }), !list.rect.isEmpty else { return nil }
+        // Only the head of the list matters, and reading every contact would be
+        // one cross-process read per person in the address book.
+        let rows = list.children.prefix(12).map(WCNode.init)
+            .filter { $0.role == "AXCheckBox" && !$0.rect.isEmpty }
+            .sorted { $0.rect.minY < $1.rect.minY }
+        guard let firstNamed = rows.firstIndex(where: { !$0.strings.isEmpty }), firstNamed > 0 else { return nil }
+        let tabs = rows[firstNamed - 1]
+        guard tabs.rect.width > 0, list.rect.contains(tabs.rect) else { return nil }
+        return CGPoint(x: tabs.rect.minX + tabs.rect.width * 0.766, y: tabs.rect.midY)
+    }
+
+    /// Where 转发到其他应用 is, read off the sheet.
+    ///
+    /// WeChat draws this row itself: it is in neither of the two conversations
+    /// this has been tried against, by role or by text, so there is nothing to
+    /// press and nothing to measure from. It has to be looked at.
+    ///
+    /// It used to be a measured offset from the sheet's corner, which cost no
+    /// permission and was only ever right by luck. What sits above the row is a
+    /// stack of promotions for whatever else the user has installed — 企业微信,
+    /// WorkBuddy — so the row moves down by one strip per promotion, and the
+    /// developer's own machine happened to have exactly one. macOS 26 with none
+    /// of them put the row 125 points above where the offset aimed, which on
+    /// that layout is inside the recipient list: not a click that misses, a
+    /// click that selects somebody. The sheet's outer size and its buttons stay
+    /// where they were through all of it, so no check on the outline can tell
+    /// the layouts apart.
+    private func externalSharePoint(_ sheet: WCNode) throws -> CGPoint {
         guard CGPreflightScreenCaptureAccess() else { throw WeChatAutomationError.screenRecording }
         let started = clock()
-        let crop = CGRect(x: floor(sheet.rect.minX), y: floor(sheet.rect.minY), width: floor(sheet.rect.width * 0.46), height: floor(sheet.rect.height * 0.48))
+        // The left column, down far enough to still contain the row when the
+        // promotions above it are at their tallest. Each installed companion
+        // app (企业微信, WorkBuddy) adds a strip of about 125 points, and two of
+        // them push the row to roughly 330 — past the 269 this used to read,
+        // which would have found nothing and reported an unsupported layout.
+        // Reading more costs a few milliseconds; the recipient names it takes
+        // in cannot be mistaken for the label being searched for.
+        let crop = CGRect(x: floor(sheet.rect.minX), y: floor(sheet.rect.minY),
+                          width: floor(sheet.rect.width * 0.45), height: floor(sheet.rect.height * 0.78))
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("dukou-control-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -698,7 +971,11 @@ final class WeChatAccessibility {
         guard process.terminationStatus == 0 else { throw WeChatAutomationError.unsupportedLayout }
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
-        request.recognitionLanguages = ["zh-Hans", "en-US"]
+        // One fixed Chinese label. Latin script and the language model that
+        // second-guesses words are both work for a phrase that is either there
+        // exactly or is not the one being looked for.
+        request.recognitionLanguages = ["zh-Hans"]
+        request.usesLanguageCorrection = false
         request.customWords = ["转发到其他应用"]
         try VNImageRequestHandler(url: url).perform([request])
         let matches = (request.results ?? []).filter { observation in
@@ -723,13 +1000,22 @@ final class WeChatAccessibility {
         guard installed?.bundleIdentifier == "dev.dukou.Dukou.Share", installed?.object(forInfoDictionaryKey: "DKShareAction") as? String == "shelf" else { throw WeChatAutomationError.missingShare }
         try press(try waitControl("合并转发"))
         _ = try waitControl("取消")
-        if let external = control("转发到其他应用", in: try scan()) {
+        let sheetNodes = try scan()
+        // Worth asking twice before falling back to geometry: whatever the row
+        // is dressed as, being able to press it directly beats aiming at it.
+        if let external = control("转发到其他应用", in: sheetNodes) ?? looseControl("转发到其他应用", in: sheetNodes) {
             locator = "accessibility"
             try press(external)
+        } else if let row = externalShareRow(in: sheetNodes) {
+            locator = "list-row"
+            try click(row)
         } else {
-            let (sheet, cancel, confirm) = try recipientSheet()
-            let point = try externalSharePoint(sheet, cancel: cancel, confirm: confirm)
-            try click(point)
+            // Last resort, and the only path that costs a permission: the list
+            // is not shaped the way any build so far has shaped it.
+            // recipientSheet also asserts 确定 is still disabled, so a stray
+            // selection would be caught before anything is clicked.
+            let (sheet, _, _) = try recipientSheet()
+            try click(try externalSharePoint(sheet))
         }
         // Never retry a possibly successful click. Verify the next UI state.
         try press(try waitControl("选择电脑中的应用"))
@@ -784,9 +1070,10 @@ final class WeChatAccessibility {
     private func diagnostics(started: Double, outcome: String, count: Int) {
         let report: [String: Any] = ["schemaVersion": 3, "strategy": "native-range-checkpoint", "at": ISO8601DateFormatter().string(from: Date()),
             "outcome": outcome, "phase": phase, "seconds": clock() - started, "messageCount": count,
-            "scrolls": scrollCount, "scrollSeconds": scrollSeconds, "scanSeconds": scanSeconds, "scanCalls": scanCalls, "stableSeconds": stableSeconds, "exportSeconds": exportSeconds, "scrollsByPhase": scrollsByPhase, "steps": steps, "clicks": clickCount, "rangeClicks": rangeClicks, "shiftRangeClicks": shiftRangeClicks, "exports": exportCount, "resumedBatches": resumedBatches,
+            "scrolls": scrollCount, "scrollSeconds": scrollSeconds, "scanSeconds": scanSeconds, "scanCalls": scanCalls, "stableSeconds": stableSeconds, "exportSeconds": exportSeconds, "prefetchSeconds": prefetchSeconds, "prefetchRows": prefetchRows, "prefetchLoaded": prefetchLoaded, "scrollsByPhase": scrollsByPhase, "steps": steps, "clicks": clickCount, "rangeClicks": rangeClicks, "shiftRangeClicks": shiftRangeClicks, "exports": exportCount, "resumedBatches": resumedBatches,
             "snapshots": snapshots,
             "locator": locator, "visualMilliseconds": visualMilliseconds, "lastNodeCount": lastNodeCount,
+            "scanTruncated": scanTruncated, "controlFailure": controlFailure ?? [:],
             "wechatVersion": app.bundleURL.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String } ?? "unknown"]
         let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Dukou/WeChat")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -803,6 +1090,10 @@ final class WeChatAccessibility {
         defer { cleanup(); diagnostics(started: started, outcome: outcome, count: count) }
         progress(L10n.text("正在打开微信群聊…"))
         try openChat()
+        // Anything past one native batch reaches history WeChat has not
+        // materialised yet. Load it in one pass now rather than a gesture at a
+        // time inside every batch's budget.
+        if range.value > WeChatPrefetch.threshold { try prefetchHistory(target: range.value) }
         var directories: [URL] = [], checkpoints: [URL] = []
         var start = SelectionStart.latest
         var oldestDate: Date?

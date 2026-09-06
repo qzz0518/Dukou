@@ -6,6 +6,8 @@ struct WeChatPane: View {
     @ObservedObject var forward: WeChatQuickForward
     @ObservedObject var authorization: AccessibilityAuthorization
     @ObservedObject var preferences: Preferences
+    /// The amount field's own text, so a rejected keystroke can be taken back.
+    @State private var amount = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
@@ -25,12 +27,28 @@ struct WeChatPane: View {
                 }
                 HStack(spacing: Space.s) {
                     Text(L10n.text("最近")).font(Typo.paneBody)
-                    TextField(L10n.text("范围数量"), value: $forward.draft.range.value, format: .number.grouping(.never))
+                    // A TextField will not take a correction back from its own
+                    // binding while it has focus, so the field owns its text and
+                    // the count follows it. Anything that is not a digit is
+                    // removed on the keystroke that typed it.
+                    TextField(L10n.text("范围数量"), text: $amount)
                         .textFieldStyle(SettingsTextFieldStyle(numeric: true, invalid: !forward.draft.range.isValid))
                         .multilineTextAlignment(.center)
                         .frame(width: 64)
                         .accessibilityIdentifier("wechat.amount")
                         .disabled(forward.draft.range.unit != .messages)
+                        .onChange(of: amount) { _, typed in
+                            let digits = WeChatForwardRange.digits(typed)
+                            if digits != typed { amount = digits }
+                            forward.setAmount(digits)
+                        }
+                        .onChange(of: forward.draft.range.unit) { _, _ in
+                            // 改用条数 sets the count from outside the field.
+                            // Only that: following the count itself would let
+                            // this fight the digits being typed into it.
+                            amount = forward.amountText
+                        }
+                        .onAppear { amount = forward.amountText }
                     Text(forward.draft.range.unit.title)
                         .font(Typo.paneBody)
                         .accessibilityIdentifier("wechat.unit")

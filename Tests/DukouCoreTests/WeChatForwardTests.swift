@@ -161,3 +161,40 @@ final class WeChatForwardTests: XCTestCase {
         }
     }
 }
+
+extension WeChatForwardTests {
+    /// The field showed "②00" — a Chinese IME offered a circled numeral and the
+    /// free-text field took it, because `TextField(value:format:)` only parses
+    /// when it loses focus.
+    func testCircledAndFullWidthNumeralsFoldToDigits() {
+        XCTAssertEqual(WeChatForwardRange.digits("②00"), "200")
+        XCTAssertEqual(WeChatForwardRange.digits("２００"), "200")
+        XCTAssertEqual(WeChatForwardRange.digits("三00"), "300")
+        XCTAssertEqual(WeChatForwardRange.digits("٣٠٠"), "300")
+    }
+
+    func testAnythingThatIsNotADigitIsRefused() {
+        XCTAssertEqual(WeChatForwardRange.digits("1a2 3-"), "123")
+        XCTAssertEqual(WeChatForwardRange.digits("1.5"), "15")
+        XCTAssertEqual(WeChatForwardRange.digits("abc"), "")
+        XCTAssertEqual(WeChatForwardRange.digits(""), "")
+        // 十 and 百 carry numeric values of their own; neither is a digit.
+        XCTAssertEqual(WeChatForwardRange.digits("十"), "")
+        XCTAssertEqual(WeChatForwardRange.digits("½"), "")
+    }
+
+    func testLeadingZerosCollapseButASingleZeroSurvives() {
+        XCTAssertEqual(WeChatForwardRange.digits("007"), "7")
+        XCTAssertEqual(WeChatForwardRange.digits("0"), "0")
+        XCTAssertEqual(WeChatForwardRange.digits("000"), "0")
+    }
+
+    /// Out of range is still typeable — the form says why, rather than the
+    /// field silently correcting what was typed.
+    func testAnOutOfRangeNumberIsKeptSoTheFormCanExplainIt() {
+        XCTAssertEqual(WeChatForwardRange.digits("5000"), "5000")
+        XCTAssertFalse(WeChatForwardRange(unit: .messages, value: 5000).isValid)
+        // Bounded so a held key cannot overflow the count it becomes.
+        XCTAssertEqual(WeChatForwardRange.digits(String(repeating: "9", count: 40)).count, 6)
+    }
+}

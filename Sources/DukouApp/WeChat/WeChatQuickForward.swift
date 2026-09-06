@@ -63,6 +63,15 @@ final class WeChatQuickForward: ObservableObject {
         draft = preset
     }
     func use(_ preset: WeChatForwardPreset) { guard !isBusy else { return }; draft = preset; error = nil }
+    /// The amount field's text. Held as a count, shown as digits, and filtered
+    /// on the way in so the field can never carry something the range cannot be
+    /// made of. Empty reads as zero, which the form marks invalid rather than
+    /// silently correcting.
+    var amountText: String { draft.range.value > 0 ? String(draft.range.value) : "" }
+    func setAmount(_ text: String) {
+        guard !isBusy else { return }
+        draft.range.value = Int(WeChatForwardRange.digits(text)) ?? 0
+    }
     func useMessageCount() {
         guard !isBusy else { return }
         draft.range = .init(unit: .messages, value: 100)

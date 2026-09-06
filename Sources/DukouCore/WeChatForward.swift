@@ -24,6 +24,26 @@ public struct WeChatForwardRange: Codable, Hashable, Sendable {
     }
 
     public var isValid: Bool { (1...unit.maximum).contains(value) }
+
+    /// What the amount field may hold, filtered as it is typed.
+    ///
+    /// A `TextField(value:format:)` is free text until it loses focus, so
+    /// whatever the input method offers can sit in it — "②00" arrived from a
+    /// Chinese IME offering a circled numeral. Digits in any script are folded
+    /// to ASCII rather than dropped, so ②00, ２００ and 二00 all read as 200;
+    /// everything else is refused at the keystroke.
+    ///
+    /// The range itself is not enforced here. A number outside it is still a
+    /// number the field should show while the form says what is wrong with it.
+    public static func digits(_ text: String, limit: Int = 6) -> String {
+        var result = ""
+        for character in text {
+            guard result.count < limit, let value = character.wholeNumberValue, (0...9).contains(value) else { continue }
+            result += String(value)
+        }
+        while result.count > 1, result.hasPrefix("0") { result.removeFirst() }
+        return result
+    }
     /// Time presets remain decodable, but must not start the unverified UI path.
     public var isAvailableForAutomation: Bool { unit == .messages && isValid }
 

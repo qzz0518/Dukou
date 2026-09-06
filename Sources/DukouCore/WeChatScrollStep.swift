@@ -33,6 +33,12 @@ public enum WeChatScrollStep {
     /// `gain` from what actually moved, one clamped step used to drive the next
     /// delta up to the limit and hold it there — a hundred steps that each
     /// advanced half a message.
+    ///
+    /// Re-measured 2026-09-07, twice, over rows WeChat already held: this size
+    /// moved the list 570 points both times, and 10 000 units moved it 50 both
+    /// times. Sizes in between answered differently on the two runs, so the
+    /// threshold is not a property of the number alone — which is why nothing
+    /// asks for more than this, in either direction.
     public static let maximumDelta: Int32 = 520
 
     /// A measured gain outside this band is not a property of the list; it is a

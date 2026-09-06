@@ -15,6 +15,8 @@ final class AutomationHUD {
     /// Set for the length of the fade-out. A capsule on its way out has already
     /// given the corner back, and nothing should stand aside for it.
     private var isLeaving = false
+    /// Live for as long as the capsule is up. See `watchForEscape`.
+    private var escapeWatchers: [Any] = []
 
     /// Where it sits, so the failure toast can step aside instead of landing on
     /// the 取消 button. Same contract as `ShelfCoachMark.frame`.
@@ -31,6 +33,7 @@ final class AutomationHUD {
         self.panel = panel
         let showing = panel.isVisible
         isLeaving = false
+        watchForEscape()
         let frame = place(status, in: panel)
         guard !showing else {
             // `hide` may still be fading it out — 再次执行 clicked the moment the
@@ -62,6 +65,9 @@ final class AutomationHUD {
     /// Idempotent: a second call while the fade is running would only hang
     /// another identical animation group off a panel that is already leaving.
     func hide() {
+        // Before the visibility guard: a run that ends without ever raising the
+        // panel must still take the key back.
+        stopWatchingForEscape()
         guard let panel, panel.isVisible, !isLeaving else { return }
         isLeaving = true
         NSAnimationContext.runAnimationGroup { context in
@@ -73,6 +79,41 @@ final class AutomationHUD {
             guard let panel, panel.alphaValue == 0 else { return }
             panel.orderOut(nil)
         }
+    }
+
+    /// Escape cancels the run, from wherever the user is looking.
+    ///
+    /// The automation owns the pointer for its duration and the app it drives
+    /// is frontmost, so 取消 is a click the user has to aim — while Escape is
+    /// where a hand already is when something needs to stop. The global watch
+    /// is what makes it reachable from inside WeChat, and the accessibility
+    /// permission the forward already requires is what makes that possible;
+    /// without it this silently does nothing and the button still works.
+    ///
+    /// The key is not swallowed globally — a monitor cannot — so WeChat sees an
+    /// Escape of its own. That only helps: leaving multi-select is what the
+    /// cleanup goes on to do anyway, and `cleanup` re-checks the window before
+    /// pressing anything.
+    private func watchForEscape() {
+        guard escapeWatchers.isEmpty else { return }
+        let cancel = { [weak self] in MainActor.assumeIsolated { self?.onCancel() } }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { event in
+            guard event.keyCode == 53 else { return }
+            cancel()
+        }) { escapeWatchers.append(global) }
+        // Dukou itself is frontmost until the automation takes the front, and
+        // for the settings window Escape would otherwise close the window out
+        // from under a run the user meant to stop.
+        if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { event in
+            guard event.keyCode == 53 else { return event }
+            cancel()
+            return nil
+        }) { escapeWatchers.append(local) }
+    }
+
+    private func stopWatchingForEscape() {
+        for watcher in escapeWatchers { NSEvent.removeMonitor(watcher) }
+        escapeWatchers.removeAll()
     }
 
     /// Writes the content and the frame, and answers with the frame — the top
