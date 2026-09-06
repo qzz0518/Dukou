@@ -632,8 +632,8 @@ final class WeChatAccessibility {
         return Int(count)
     }
 
-    /// Materialise history with native Home/End jumps. The old burst-scrolling
-    /// pass remains available when the list does not support keyboard focus.
+    /// Keep requesting the top until history is loaded, then return once. The
+    /// wheel fallback is for a list that does not support keyboard focus.
     private func prefetchHistory(target: Int) throws -> Page {
         phase = "prefetch"
         let started = clock()
@@ -644,20 +644,42 @@ final class WeChatAccessibility {
         // by the user reading it — has nothing to fetch, and the pass costs
         // nothing beyond the count it just read.
         var loaded = loadedSlots(page.list.element)
-        // Home crosses the entire loaded buffer in one native operation and
-        // causes Qt to request its next history page. End returns immediately.
-        // Count remains a prefetch estimate: separators are not messages.
+        // Home focuses the old first row. Once Qt prepends the next history
+        // page, that same focused row moves to index N: N is the number of
+        // added slots. This acknowledges loading without an End round trip.
+        // Slots are only a prefetch estimate; selection still counts messages.
         if try focusList(page) {
-            var stalled = 0
             let slots = target + max(32, target / 4)
-            while loaded < slots, clock() < deadline, stalled < 2 {
+            var homes = 0
+            while loaded < slots, clock() < deadline, homes < 120 {
                 progress(L10n.text("正在加载更早的聊天记录…"))
+                guard let previous = focusedNode() else { throw WeChatAutomationError.focusChanged }
                 try navigationKey(115) // Home
-                page = try stablePage(timeout: 5)
-                page = try returnToLatest(from: page)
-                let reached = loadedSlots(page.list.element)
-                stalled = reached > loaded ? 0 : stalled + 1
-                loaded = reached
+                homes += 1
+                let loadingDeadline = min(deadline, clock() + 2)
+                var added = 0
+                repeat {
+                    try frontmost()
+                    // Focus can briefly be a recycled virtual cell while Qt
+                    // replaces its children. Wait for a materialised row and
+                    // resolve it in this fresh array, never a cached index.
+                    if let focused = focusedNode(), focused.id != "virtual_cell", !focused.rect.isEmpty,
+                       abs(focused.rect.minY - page.list.rect.minY) < 2,
+                       !CFEqual(previous.element, focused.element) || previous.strings != focused.strings,
+                       let children = wcAttribute(page.list.element, "AXChildren") as? [AXUIElement],
+                       let index = children.firstIndex(where: { CFEqual($0, focused.element) }), index > 0 {
+                        added = index
+                        break
+                    }
+                    try pause(0.001)
+                } while clock() < loadingDeadline
+                guard added > 0 else { break }
+                loaded += added
+            }
+            if homes > 0 {
+                page = try returnToLatest(from: try stablePage(timeout: 5))
+                loaded = loadedSlots(page.list.element)
+                steps.append(["kind": "prefetch-home", "keys": homes, "loaded": loaded])
             }
             prefetchLoaded = loaded
             return page
@@ -743,9 +765,12 @@ final class WeChatAccessibility {
             page = try stablePage(timeout: 5)
             // Verify End actually focused the final child; a successful key
             // post alone does not establish that this is the latest message.
+            // The final row can also be a timestamp or a "拍了拍" notice.
+            // End has still reached the bottom when that row has focus and
+            // the newest selectable message is visible above it.
             if let last = page.list.children.last, let focused = focusedNode(),
-               CFEqual(last, focused.element), let newest = page.rows.last,
-               CFEqual(newest.element, focused.element), page.canCheck(newest) { return page }
+               CFEqual(last, focused.element), !focused.rect.intersection(page.list.rect).isNull,
+               let newest = page.rows.last, page.canCheck(newest) { return page }
         }
         // Usually the list is already where this wants it — every batch anchor
         // comes through here — so the first burst is small enough to find that

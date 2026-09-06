@@ -154,6 +154,60 @@ public struct WeChatSelectedMessage: Equatable, Sendable {
         // truncation or fuzzy text matching.
         let unquotedDescription = description.range(of: "\n引用 ").map { String(description[..<$0.lowerBound]) } ?? description
         if hasBody(unquotedDescription, record.text) { return true }
+        // A merged group-chat card is one top-level message. Validate every
+        // indented image item, then compare its first four sender/type previews
+        // exactly. Native export may omit these nested image attachments.
+        let mergedPrefix = "[聊天记录]\n\n"
+        if record.text.hasPrefix(mergedPrefix) {
+            let items = String(record.text.dropFirst(mergedPrefix.count)).components(separatedBy: "\n\n")
+            var previews: [String] = []
+            for item in items {
+                let lines = item.components(separatedBy: "\n")
+                guard lines.count == 3, lines[0].hasPrefix("    ·"), lines[1] == "    ",
+                      lines[2].range(of: #"\A    \[图片\] 微信图片_[0-9]{12}_[1-9][0-9]*\.jpg\z"#, options: .regularExpression) != nil else { return false }
+                let sender = String(lines[0].dropFirst("    ·".count))
+                guard !sender.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      sender.rangeOfCharacter(from: .newlines) == nil else { return false }
+                if previews.count < 4 { previews.append(sender + ": [图片]") }
+            }
+            return !previews.isEmpty && hasBody(unquotedDescription, "聊天记录群聊的聊天记录" + previews.joined(separator: "\n"))
+        }
+        // Native TXT drops a labeled sticker's name and a video call's
+        // duration. Accept only these observed AX body grammars against the
+        // same exact native placeholder, preserving the sender boundary.
+        let placeholderPattern: String? = switch record.text {
+        case "[动画表情]": #"(?:\A| )动画表情 \[[^\[\]\s]+\]\z"#
+        case "[视频通话]": #"(?:\A| )视频通话通话时长 [0-9]{2}:(?:[0-5][0-9]:)?[0-5][0-9]\z"#
+        default: nil
+        }
+        if let placeholderPattern, unquotedDescription.range(of: placeholderPattern, options: .regularExpression) != nil { return true }
+        // AX identifies the red-packet card but omits its blessing. The native
+        // representation must still be the same type and one nonempty line.
+        let redPacketPrefix = "[WeChat红包] "
+        if hasBody(unquotedDescription, "WeChat红包"), record.text.hasPrefix(redPacketPrefix) {
+            let blessing = String(record.text.dropFirst(redPacketPrefix.count))
+            return !blessing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && blessing.rangeOfCharacter(from: .newlines) == nil
+        }
+        // AX keeps the duration, sometimes preceded by 下载; native TXT keeps
+        // the exported video's name.
+        // Downloaded videos require an exact CRC-checked attachment reference.
+        if unquotedDescription.range(of: #"(?:\A| )视频 (?:下载)?[0-9]{1,2}:[0-5][0-9]\z"#, options: .regularExpression) != nil {
+            let prefix = "[视频] "
+            guard record.text.hasPrefix(prefix) else { return false }
+            let filename = String(record.text.dropFirst(prefix.count))
+            if attachmentNames.contains(filename) { return true }
+            // An explicit 下载 row can export only this native filename. Its
+            // timestamp must agree with the record; arbitrary missing files
+            // do not qualify, and no media is downloaded to satisfy the check.
+            guard unquotedDescription.range(of: #"(?:\A| )视频 下载[0-9]{1,2}:[0-5][0-9]\z"#, options: .regularExpression) != nil,
+                  filename.range(of: #"\A微信视频_[0-9]{12}_[1-9][0-9]*\.mp4\z"#, options: .regularExpression) != nil else { return false }
+            let formatter = DateFormatter()
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = .current
+            formatter.dateFormat = "yyyyMMddHHmm"
+            return filename.hasPrefix("微信视频_\(formatter.string(from: record.date))_")
+        }
         // AX exposes a Channels card's author, but not its video URL. Match
         // that complete author and the exact native card format; the caller
         // still verifies the message count and order independently.
