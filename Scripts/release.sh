@@ -13,7 +13,13 @@ NOTARIZE="${NOTARIZE:-1}"
 GENERATE_APPCAST="${GENERATE_APPCAST:-1}"
 REQUIRE_TAG="${REQUIRE_TAG:-1}"
 REQUIRE_CLEAN="${REQUIRE_CLEAN:-1}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-Dukou-Notary}"
+# The `notarytool store-credentials` profile to submit with. Apple issues
+# notarization credentials per Apple ID and team, not per app, so one stored
+# profile covers everything team H2P566W3PA signs — this Mac keeps it under the
+# name of the first app that needed it. The old default, `Dukou-Notary`, was a
+# name nothing had ever stored, so every release stopped on a missing keychain
+# item that read like lost credentials.
+NOTARY_PROFILE="${NOTARY_PROFILE:-Charker-Notary}"
 APP="$ROOT/dist/Dukou.app"
 APP_ZIP="$ROOT/dist/Dukou-$VERSION.app.zip"
 DMG="$ROOT/dist/Dukou-$VERSION.dmg"
