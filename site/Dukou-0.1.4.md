@@ -1,3 +1,6 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
 ## 更新日志
 
 1. **快捷微信转发快了一大截：500 条消息全程约 20 秒**（上个版本 300 条约 30 秒）。以前是用滚轮一屏一屏往上翻，每翻一次都得停下来看看落到哪了；现在直接用微信消息列表自带的键盘导航——Home 一下就跨过整段已加载的记录，方向键一次稳稳走一条消息。按键只发给微信，不经过全局输入。
