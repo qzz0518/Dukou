@@ -32,9 +32,9 @@ The catch is that the "forward to other apps" list only shows apps that ship a s
 | **Send to Codex** | Brings ChatGPT forward and pastes into its input |
 | **Send to Claude** | Brings Claude forward and pastes into its input |
 | **Copy to Clipboard** | Just puts it on the clipboard; the ⌘V is yours |
-| **Send to Custom** | Your own list of apps: one app just goes, two or more get a small picker card |
+| **Send to Custom** | Your own list of apps: one app just goes, two or more get a small picker card next to the pointer |
 
-One step further, Quick WeChat forward (experimental) exports, verifies and pastes the latest messages of a named group semi-automatically, by group name and message count, with no manual selection.
+One step further, Quick WeChat forward (experimental) exports, verifies and pastes the latest messages of a named group automatically, by group name and message count, with no manual selection: about 30 seconds for 300 messages.
 
 > [!NOTE]
 > Early release. The five entries, the shelf, automated pasting and Sparkle updates all work end to end on the author's Mac; large archives, multiple displays and the permission guide on a fresh machine are still being verified one by one.
@@ -48,7 +48,7 @@ One step further, Quick WeChat forward (experimental) exports, verifies and past
 - **Send to any app.** The Send to Custom list is kept in Settings, and the same list backs the Send to ▸ menus on the shelf and in History. Terminal-like apps can receive quoted file paths instead of files.
 - **Attached prompt.** When sending to Codex, Claude, a custom app or through the quick WeChat forward, a prompt of your own is pasted first, then the files (for terminal-like apps it is folded in ahead of the paths). One summary prompt comes built in; keep up to three and switch between them.
 - **Failures always have a way out.** App not installed, permission missing, app never came forward: the files are already on the clipboard, and the message offers to put them on the shelf. Success shows nothing.
-- **Quick WeChat forward (experimental).** Name a group and a message count; Dukou drives WeChat through Accessibility to select and merge-forward the messages, verifies the exported ZIP, and pastes it into the app you are using.
+- **Quick WeChat forward (experimental).** Name a group and a message count; Dukou drives WeChat through Accessibility to select and merge-forward the messages, verifies the exported ZIP, and pastes it into the app you are using — even when that app is behind another window or minimized. About 30 seconds for 300 messages, batched automatically past 100. A capsule in the corner names each step and cancels on one click; until it finishes, the mouse and keyboard belong to Dukou.
 - **Safe updates.** Sparkle checks for EdDSA-signed releases and downloads only the one you confirm, from GitHub Releases.
 - **Simplified Chinese and English** throughout, share-menu entries included.
 
@@ -106,7 +106,7 @@ The build script picks a stable Developer ID or Apple Development identity from 
 | Data | What Dukou does with it |
 |---|---|
 | The ZIP WeChat exports | Copied into the App Group container as is; never unpacked or read |
-| Clipboard | File URLs only, or the quoted paths a terminal asked for |
+| Clipboard | File URLs, the attached prompt, or the quoted paths a terminal asked for |
 | Network | Software updates only: Sparkle reads a signed appcast on GitHub Pages and downloads only the release you confirm, from GitHub Releases |
 | Sandbox | All five extensions are sandboxed. The app is not: switching entries calls `pluginkit`, and `pkd` refuses a sandboxed client |
 
@@ -129,7 +129,7 @@ The build script picks a stable Developer ID or Apple Development identity from 
 
 ```text
 Sources/
-├── DukouCore/    Inbox protocol, manifests, intents, batch state; shared by app and extension
+├── DukouCore/    Inbox protocol, manifests, intents, batch state, and the automation's pure logic
 ├── DukouShare/   The share extension: import and commit, no interface
 └── DukouApp/     Resident app, shelf, auto-paste, permission guide, settings, WeChat automation, Sparkle updates
 Tests/            Inbox, batch state, forward targets and WeChat transcript parsing

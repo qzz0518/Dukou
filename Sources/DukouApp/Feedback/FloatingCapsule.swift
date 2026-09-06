@@ -1,4 +1,5 @@
 import AppKit
+import DukouCore
 
 /// What Dukou's two floating capsules — the failure toast and the one-time
 /// shelf coach mark — have in common: the panel they live in, how they measure
@@ -106,6 +107,38 @@ enum FloatingCapsule {
         // A Mac with no screens is a Mac with nobody looking at it; the fallback
         // is only here so the geometry below stays finite.
         return screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+    }
+
+    /// The usable area of the screen the pointer is on. Unlike `visibleFrame(holding:)`
+    /// this never falls back to the menu-bar screen while the pointer says which
+    /// display the user is actually working on.
+    static func visibleFrame(containing point: NSPoint) -> NSRect {
+        // `contains` excludes the top and right edges, and a pointer parked on a
+        // screen's very edge is a real position — so a miss falls to the nearest
+        // screen rather than to the menu bar's, which is the display this method
+        // exists to stop choosing.
+        let screen = NSScreen.screens.first { $0.frame.contains(point) }
+            ?? NSScreen.screens.min { distance(from: point, to: $0.frame) < distance(from: point, to: $1.frame) }
+            ?? NSScreen.main
+        return screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+    }
+
+    private static func distance(from point: NSPoint, to rect: NSRect) -> CGFloat {
+        let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
+        let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
+        return dx * dx + dy * dy
+    }
+
+    /// Hanging off a click, on the click's own screen — `PointerPlacement` carries
+    /// the geometry and the reasoning.
+    static func near(_ point: NSPoint, size: NSSize) -> NSRect {
+        PointerPlacement.frame(
+            size: size,
+            pointer: point,
+            in: visibleFrame(containing: point),
+            gap: Metrics.toastGap,
+            margin: Metrics.screenMargin
+        )
     }
 
     /// Beside the shelf, tops aligned, on whichever side has more room.

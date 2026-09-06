@@ -200,6 +200,7 @@
 "取消" = "Cancel";
 "取消本次转发" = "Cancel this forward";
 "同时收到了多次分享，无法确认本次文件，已停止自动粘贴。" = "Multiple shares arrived together. Automatic paste stopped because the files could not be attributed.";
+"完成前请不要动鼠标和键盘" = "Hands off the mouse and keyboard until this finishes.";
 "天" = "days";
 "导出记录与所选消息不一致，已停止自动粘贴，文件已保留。" = "The export does not match the selected messages. Automatic paste stopped; the files were kept.";
 "小时" = "hours";
@@ -213,6 +214,9 @@
 "微信转发需要辅助功能权限。" = "WeChat forwarding needs Accessibility access.";
 "忘记这个群聊" = "Forget this group";
 "快捷微信转发" = "Quick WeChat Forward";
+"快捷微信转发失败：%@" = "Quick WeChat forward failed: %@";
+"打开设置" = "Open Settings";
+"执行期间 Dukou 会自己操作微信，请不要碰鼠标和键盘。" = "Dukou drives WeChat by itself while this runs. Keep your hands off the mouse and keyboard.";
 "按最新消息向前选取，每个 ZIP 最多 100 条；一次任务最多 2,000 条。" = "Select the latest messages, with up to 100 per ZIP and 2,000 per task.";
 "无法准确选中这一批消息，已停止。请缩小范围后重试。" = "This batch could not be selected accurately. Try a smaller range.";
 "无法识别微信导出的聊天记录格式，文件已保留。" = "The WeChat export format was not recognized. The files were kept.";
@@ -238,7 +242,7 @@
 "范围数量" = "Range amount";
 "记住的群聊" = "Remembered groups";
 "请先关闭微信的聊天记录窗口，或退出正在进行的多选、转发。" = "Close WeChat history or finish the current selection or forward before starting.";
-"请先在目标应用中选好输入位置。完成后自动按 ⌘V，成功执行的群聊和配置会被记住。" = "Focus the destination input first. Dukou presses ⌘V when ready and remembers the group and settings after a successful run.";
+"请先在目标应用中点选输入框，确认接收后会记住这次配置。" = "Choose an input in the destination app first. This setup is remembered after delivery is confirmed.";
 "请先打开并登录微信。" = "Open WeChat and sign in first.";
 "请填写群名和有效范围，并选择一个正在运行的应用。" = "Enter a group name and a valid range, then select a running app.";
 "请输入 1–%d 之间的整数。" = "Enter an integer from 1 to %d.";

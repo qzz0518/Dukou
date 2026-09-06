@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let wechat = WeChatQuickForward(
             model: model, shelf: shelf, runner: runner, authorization: authorization, preferences: preferences
         )
+        wechat.openSettings = { [weak self] tab in self?.openMainWindow(tab) }
         self.wechat = wechat
 
         // One place decides what an arriving batch means; the shelf and the

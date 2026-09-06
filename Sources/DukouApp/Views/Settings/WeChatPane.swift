@@ -77,7 +77,7 @@ struct WeChatPane: View {
                     ]
                 )
                 .accessibilityIdentifier("wechat.pasteMode")
-                Text(L10n.text("请先在目标应用中选好输入位置。完成后自动按 ⌘V，成功执行的群聊和配置会被记住。"))
+                Text(L10n.text("请先在目标应用中点选输入框，确认接收后会记住这次配置。"))
                     .font(Typo.paneCaption).foregroundStyle(Theme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }.disabled(forward.isBusy)
@@ -120,7 +120,11 @@ struct WeChatPane: View {
                         .accessibilityIdentifier("wechat.run")
                 }
             }
-
+            // Standing, not only while a run is up: the one thing to know
+            // before pressing 开始转发 is that the pointer stops being yours.
+            Text(L10n.text("执行期间 Dukou 会自己操作微信，请不要碰鼠标和键盘。"))
+                .font(Typo.paneCaption).foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             if !forward.recent.isEmpty {
                 SettingsSection(title: L10n.text("记住的群聊"), systemImage: "clock.arrow.circlepath", spacing: Space.m) {
                     ForEach(forward.recent) { preset in

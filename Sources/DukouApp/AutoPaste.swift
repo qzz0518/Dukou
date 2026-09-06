@@ -61,6 +61,13 @@ enum AutoPaste {
         configuration.addsToRecentItems = false
 
         _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+        // The same raise `bringToFront` runs, so both paths leave the target in
+        // the same state: the window the user last had focused is on top, and
+        // out of the Dock if that is where the whole app was, before ⌘V goes
+        // anywhere near it.
+        if let pid = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first?.processIdentifier {
+            restoreWindows(pid: pid)
+        }
         try await waitUntilFrontmost(bundleIdentifier: bundleIdentifier, displayName: displayName)
         // A short settle after the app is frontmost, so the window has had a
         // turn of its own run loop to focus its input field.
@@ -87,12 +94,7 @@ enum AutoPaste {
         try checkCancellation()
         guard isTrusted else { throw Failure.notTrusted }
         guard let app = NSRunningApplication(processIdentifier: pid), app.bundleIdentifier == bundleIdentifier, !app.isTerminated else { throw Failure.didNotBecomeActive(name: displayName) }
-        app.activate(options: [])
-        let deadline = Date().addingTimeInterval(4)
-        while NSWorkspace.shared.frontmostApplication?.processIdentifier != pid && Date() < deadline {
-            try checkCancellation()
-            try await Task.sleep(nanoseconds: 60_000_000)
-        }
+        try await bringToFront(app, displayName: displayName, checkCancellation: checkCancellation)
         try await Task.sleep(nanoseconds: 350_000_000)
         for (index, payload) in plan.enumerated() {
             if index > 0 { try await Task.sleep(nanoseconds: betweenPastes) }
@@ -106,6 +108,124 @@ enum AutoPaste {
             guard NSPasteboard.general.changeCount == generation, NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { throw Failure.didNotBecomeActive(name: displayName) }
             try pressCommandV()
         }
+    }
+
+    /// Brings an already-running app forward, the way clicking its Dock icon
+    /// does, and waits until it actually owns the foreground.
+    ///
+    /// Not `NSRunningApplication.activate(options:)`. Since macOS 14 activation
+    /// is cooperative: the request is granted to whoever the system thinks the
+    /// user is interacting with, and a process that is not itself frontmost is
+    /// simply ignored. Dukou is `LSUIElement` and WeChat owns the foreground for
+    /// the whole of a quick forward, so that call was always the ignored kind —
+    /// and the forward then failed on its own 4 s timeout. Measured from a
+    /// background process (2026-09-06):
+    ///
+    ///     before:                front = 访达      minimized: [true]
+    ///     after activate():      front = 访达      minimized: [true]
+    ///     after openApplication: front = 文本编辑  minimized: [false]
+    ///
+    /// `openApplication(activates: true)` goes through LaunchServices, which is
+    /// the same door a Dock click uses: it changes the foreground from a
+    /// background caller *and* restores a minimized window. That is the whole
+    /// reason the Share-menu path (`activateAndPaste`) has always worked while
+    /// this one could not.
+    @MainActor
+    static func bringToFront(
+        _ app: NSRunningApplication,
+        displayName: String,
+        timeout: TimeInterval = 4,
+        checkCancellation: () throws -> Void = {}
+    ) async throws {
+        // An app with no bundle on disk cannot be opened by LaunchServices, and
+        // there is no second way in that a background caller may use.
+        guard let url = app.bundleURL else { throw Failure.didNotBecomeActive(name: displayName) }
+        let pid = app.processIdentifier
+
+        try await activate(url, displayName: displayName)
+        restoreWindows(pid: pid)
+
+        let started = Date()
+        var askedTwice = false
+        while NSWorkspace.shared.frontmostApplication?.processIdentifier != pid {
+            try checkCancellation()
+            let waited = Date().timeIntervalSince(started)
+            guard waited < timeout else { throw Failure.didNotBecomeActive(name: displayName) }
+            // One retry at the halfway mark. A LaunchServices activation that
+            // arrives while the target is still showing a modal sheet, or while
+            // Mission Control is on screen, is dropped without an error; asking
+            // again costs nothing when the first one worked.
+            if !askedTwice, waited >= timeout / 2 {
+                askedTwice = true
+                try await activate(url, displayName: displayName)
+                restoreWindows(pid: pid)
+            }
+            try await Task.sleep(nanoseconds: 60_000_000)
+        }
+    }
+
+    private static func activate(_ url: URL, displayName: String) async throws {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        // A forward is not something the user opened; it must not push the
+        // target to the top of 最近使用的项目.
+        configuration.addsToRecentItems = false
+        do {
+            _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+        } catch {
+            throw Failure.didNotBecomeActive(name: displayName)
+        }
+    }
+
+    /// Raises the target's focused window, and takes it out of the Dock only
+    /// when the app has nothing else on screen.
+    ///
+    /// Belt and braces behind `activate`, and deliberately timid. Restoring
+    /// *every* minimized window is the obvious reading of 「还原目标」 and is
+    /// wrong twice: it reopens windows the user put away on purpose, and —
+    /// measured 2026-09-06 with TextEdit, window A focused and window B in the
+    /// Dock — deminiaturizing makes a window key, so B ends up focused and ⌘V
+    /// lands in the window the user was not looking at. WeChat pays the same
+    /// price: a popped-out chat coming back reads as wrongChat.
+    ///
+    /// So the focused window is read *before* anything is touched, that one is
+    /// the only window ever unminimized, and only when there is no other way to
+    /// see the app — the case LaunchServices already covers, kept as the
+    /// fallback for when it does not. Every error is ignored on purpose: this
+    /// backs up a foreground change that has already been asked for, and an app
+    /// that exposes no AX windows (one still launching) is the ordinary case,
+    /// not a failure.
+    static func restoreWindows(pid: pid_t) {
+        guard isTrusted else { return }
+        let application = AXUIElementCreateApplication(pid)
+        // One second, the same cap the WeChat engine puts on its own AX reads.
+        // `bringToFront` runs on the MainActor, and the global default would let
+        // an app that has stopped answering freeze Dukou's own windows.
+        AXUIElementSetMessagingTimeout(application, 1)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &value) == .success,
+              let windows = value as? [AXUIElement], !windows.isEmpty else { return }
+        var focused: CFTypeRef?
+        AXUIElementCopyAttributeValue(application, kAXFocusedWindowAttribute as CFString, &focused)
+        // The type check before the cast is the same guard `window(of:)` uses:
+        // an AX attribute is a `CFTypeRef` and a forced cast on the wrong kind
+        // traps rather than returning nil.
+        let raise: AXUIElement
+        if let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() {
+            raise = focused as! AXUIElement
+        } else {
+            raise = windows[0]
+        }
+        if windows.allSatisfy(isMinimized) {
+            AXUIElementSetAttributeValue(raise, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+        }
+        AXUIElementPerformAction(raise, kAXRaiseAction as CFString)
+    }
+
+    private static func isMinimized(_ window: AXUIElement) -> Bool {
+        var minimized: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimized) == .success else { return false }
+        return (minimized as? Bool) == true
     }
 
     private static func waitUntilFrontmost(

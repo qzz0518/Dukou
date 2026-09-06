@@ -37,12 +37,6 @@ final class ShelfController: NSObject, NSWindowDelegate {
     /// Opens 设置 → 入口. Offered by the 发给 ▸ submenu when the user has not
     /// added an app of their own yet.
     var openEntries: (() -> Void)?
-    /// Raised whenever the shelf ends up somewhere else — dragged, docked to
-    /// another corner, rescued onto a screen that still exists, or gone. The
-    /// target picker parks beside the shelf and follows it; the coach mark is
-    /// moved directly, because this controller owns it.
-    var didRelocate: (() -> Void)?
-
     private let model: AppModel
     private let preferences: Preferences
     /// Read by the shelf's 发给 ▸ submenu, which lists the same destinations as
@@ -227,24 +221,17 @@ final class ShelfController: NSObject, NSWindowDelegate {
         coachMark.dismiss()
         guard !Motion.systemReducesMotion else {
             panel.orderOut(nil)
-            didRelocate?()
             return
         }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Motion.panelOut
             panel.animator().alphaValue = 0
-        } completionHandler: { [weak self, weak panel] in
+        } completionHandler: { [weak panel] in
             // A share that landed during the fade has already turned the alpha
             // back up; ordering out here would hide a shelf that has something
             // on it again.
             guard let panel, panel.alphaValue == 0 else { return }
             panel.orderOut(nil)
-            // Announced only once it is actually gone: a panel beside a shelf
-            // that is still fading would move to where the shelf no longer is
-            // and then have to move again. AppKit runs this on the main thread;
-            // the compiler cannot see that through a `Sendable` completion
-            // handler, which is all `assumeIsolated` is asserting.
-            MainActor.assumeIsolated { self?.didRelocate?() }
         }
     }
 
@@ -447,19 +434,6 @@ final class ShelfController: NSObject, NSWindowDelegate {
             .insetBy(dx: -Metrics.shelfBumpInset, dy: -Metrics.shelfBumpInset)
     }
 
-    /// Where a floating panel of this size belongs: beside the shelf while the
-    /// shelf is up, in the docking corner while it is not.
-    ///
-    /// The target picker asks for this. It is a question about a share that has
-    /// just arrived, so it belongs where the user is already looking for Dukou —
-    /// which is the shelf's corner whether or not the shelf itself is on screen.
-    func placement(for size: NSSize) -> NSRect {
-        let visible = FloatingCapsule.visibleFrame(holding: cardFrame)
-        let frame = visibleFrame.map { FloatingCapsule.beside($0, size: size, in: visible) }
-            ?? FloatingCapsule.corner(preferences.shelfCorner, size: size, in: visible)
-        return FloatingCapsule.clamped(frame, in: visible)
-    }
-
     /// Which corner a frame is anchored by while it grows.
     ///
     /// A shelf the user has dragged has no chosen corner, so it takes the corner
@@ -523,7 +497,6 @@ final class ShelfController: NSObject, NSWindowDelegate {
             // has to be recomputed whenever the card changes size.
             panel.invalidateShadow()
             positioning -= 1
-            didRelocate?()
             return
         }
 
@@ -540,10 +513,6 @@ final class ShelfController: NSObject, NSWindowDelegate {
                 guard let self else { return }
                 self.positioning -= 1
                 panel?.invalidateShadow()
-                // Only now. `panel.frame` reports the animated value while the
-                // window is still travelling, so anything that parks beside the
-                // shelf would park beside a frame it has already left.
-                self.didRelocate?()
             }
         }
     }
@@ -561,7 +530,6 @@ final class ShelfController: NSObject, NSWindowDelegate {
     func windowDidMove(_ notification: Notification) {
         guard !isPositioning, NSEvent.pressedMouseButtons != 0 else { return }
         if let cardFrame { coachMark.follow(cardFrame) }
-        didRelocate?()
         // A drag delivers one of these per frame, and AppKit adds a few points
         // of settle after the button comes up. Reading the frame when the moves
         // have stopped — rather than remembering the one that arrived last —

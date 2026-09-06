@@ -9,7 +9,9 @@ final class WeChatQuickForward: ObservableObject {
     @Published private(set) var applications: [RunningApp] = []
     @Published private(set) var isBusy = false
     @Published private(set) var isReadingChat = false
-    @Published private(set) var status: String?
+    @Published private(set) var status: String? {
+        didSet { if isBusy, let status { hud.update(status: status) } }
+    }
     @Published private(set) var error: String?
     @Published private(set) var elapsedSeconds: Double?
 
@@ -24,6 +26,12 @@ final class WeChatQuickForward: ObservableObject {
     private let preferences: Preferences
     private var cancellation: WeChatCancellation?
     private var observers = Set<AnyCancellable>()
+    /// Only a full forward raises it. `readCurrentChat` is one AX read with no
+    /// synthesized input, so there is nothing to keep the user's hands off.
+    private let hud = AutomationHUD()
+    /// Set by the app delegate, like `ActionRunner.openEntries`: a failure
+    /// capsule over another app needs somewhere to send the user.
+    var openSettings: ((SettingsTab) -> Void)?
 
     init(model: AppModel, shelf: ShelfController, runner: ActionRunner, authorization: AccessibilityAuthorization, preferences: Preferences, defaults: UserDefaults = .standard) {
         self.model = model; self.shelf = shelf; self.runner = runner; self.authorization = authorization; self.preferences = preferences; self.defaults = defaults
@@ -31,6 +39,7 @@ final class WeChatQuickForward: ObservableObject {
         draft = stored.draft
         recent = stored.recent
         refreshApplications()
+        runner.reservedFrame = { [weak self] in self?.hud.frame }
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
             NSWorkspace.shared.notificationCenter.publisher(for: name)
                 .receive(on: RunLoop.main)
@@ -83,6 +92,10 @@ final class WeChatQuickForward: ObservableObject {
     }
 
     func cancel() {
+        // The HUD stays clickable for its fade-out, which starts before
+        // `isBusy` clears. Without this, a late click on 取消 overwrote the
+        // final status with 「正在停止…」 for a run that had already finished.
+        guard isBusy, cancellation != nil else { return }
         cancellation?.cancel()
         status = L10n.text("正在停止…")
     }
@@ -109,7 +122,16 @@ final class WeChatQuickForward: ObservableObject {
         let token = WeChatCancellation()
         cancellation = token
         isBusy = true; error = nil; elapsedSeconds = nil
-        status = L10n.text("等待开始微信转发…")
+        let opening = L10n.text("等待开始微信转发…")
+        status = opening
+        // The previous run's failure capsule is in the corner this is about to
+        // take, and 再次执行 is usually clicked while it is still standing there.
+        runner.dismissNotice()
+        // Up before the first synthesized event, not when the automation gets
+        // around to WeChat: the run may sit in `enqueueExclusive` behind a
+        // share, and the seconds where nothing appears to be happening are
+        // exactly the ones where the user reaches for the mouse.
+        hud.show(status: opening) { [weak self] in self?.cancel() }
         let requestedAt = Date()
         runner.enqueueExclusive { [weak self] in
             guard let self else { return }
@@ -121,6 +143,7 @@ final class WeChatQuickForward: ObservableObject {
         let started = ProcessInfo.processInfo.systemUptime
         var deferredIntake = false
         defer {
+            hud.hide()
             if deferredIntake { model.resumeIntake(); shelf.resumePresentation() }
             elapsedSeconds = ProcessInfo.processInfo.systemUptime - started
             cancellation = nil
@@ -191,6 +214,15 @@ final class WeChatQuickForward: ObservableObject {
         } catch {
             status = nil
             self.error = error.localizedDescription
+            // 设置 is behind WeChat by now and usually closed altogether, so the
+            // failure is also said on the capsule the rest of Dukou uses.
+            hud.hide()
+            runner.notify(
+                L10n.format("快捷微信转发失败：%@", error.localizedDescription),
+                action: ToastPresenter.Action(title: L10n.text("打开设置")) { [weak self] in
+                    self?.openSettings?(.wechat)
+                }
+            )
         }
     }
 }

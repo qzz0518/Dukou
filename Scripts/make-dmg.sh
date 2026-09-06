@@ -75,8 +75,8 @@ tell application "Finder"
         set shows icon preview of viewOptions to false
         set background picture of viewOptions to ¬
             (POSIX file "$MOUNT_POINT/.background/background.png" as alias)
-        set position of item "Dukou.app" to {178, 226}
-        set position of item "Applications" to {482, 226}
+        set position of item "Dukou.app" to {195, 176}
+        set position of item "Applications" to {456, 176}
         update without registering applications
         delay 2
         close

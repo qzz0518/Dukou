@@ -63,15 +63,6 @@ final class TargetPickerPanel {
         }
     }
 
-    /// Keeps an open question beside the shelf when the shelf moves, docks to
-    /// another corner or leaves the screen. The question survives the move: a
-    /// panel that vanished because the user dragged the shelf would cancel a
-    /// forward nobody cancelled.
-    func follow(_ place: (NSSize) -> NSRect) {
-        guard let window, window.isVisible else { return }
-        window.setFrame(place(window.frame.size), display: true)
-    }
-
     private func present(
         _ targets: [ForwardTarget],
         place: (NSSize) -> NSRect,

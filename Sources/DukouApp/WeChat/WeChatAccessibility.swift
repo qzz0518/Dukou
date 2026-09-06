@@ -106,6 +106,32 @@ final class WeChatAccessibility {
     private let clock = { ProcessInfo.processInfo.systemUptime }
     private var phase = "open"
     private var scrollCount = 0
+    private var scrollSeconds = 0.0
+    private var scanSeconds = 0.0
+    private var scanCalls = 0
+    private var stableSeconds = 0.0
+    private var exportSeconds = 0.0
+    /// When the last scroll gesture ended, and where the wheel was left.
+    /// WeChat needs a beat between gestures or two of them coalesce into one
+    /// much smaller movement; spending that beat on the snapshot the engine
+    /// needs anyway is free, sleeping through it is not.
+    private var lastGestureEnded = 0.0
+    private var lastHover: CGPoint?
+    /// What this run has learned about the list it is navigating: how far a
+    /// unit of scroll moves it, and the shortest gap between gestures WeChat
+    /// keeps up with. Kept for the whole run — a second batch of 100 in the
+    /// same conversation should not have to feel its way again.
+    private var gain = 1.5
+    private var gainMeasured = false
+    private var gesturePause = WeChatScrollStep.baseGesturePause
+    private var deltaCeiling = WeChatScrollStep.maximumDelta
+    /// The message list, kept across stability checks. Re-found whenever it
+    /// stops answering as itself.
+    private var settledList: AXUIElement?
+    private var checksSinceChatVerified = 0
+    /// One entry per navigation step: requested units, the points the content
+    /// actually moved, and how far the target still was. Local diagnostics only.
+    private var steps: [[String: Any]] = []
     private var scrollsByPhase: [String: Int] = [:]
     private var clickCount = 0
     private var exportCount = 0
@@ -141,6 +167,8 @@ final class WeChatAccessibility {
         try check()
     }
     private func scan() throws -> [WCNode] {
+        let started = clock()
+        defer { scanSeconds += clock() - started; scanCalls += 1 }
         var queue = [root], index = 0, nodes: [WCNode] = []
         while index < queue.count && nodes.count < 2000 {
             if index % 32 == 0 { try check() }
@@ -173,6 +201,8 @@ final class WeChatAccessibility {
         up.setIntegerValueField(.mouseEventClickState, value: 1)
         down.flags = modifiers; up.flags = modifiers
         clickCount += 1
+        lastHover = nil
+        settledList = nil
         down.post(tap: .cghidEventTap)
         // Always release a posted button, including when cancellation arrives.
         Thread.sleep(forTimeInterval: 0.025)
@@ -207,18 +237,27 @@ final class WeChatAccessibility {
             let nodes = try scan()
             guard chatMatches(nodes) else { throw WeChatAutomationError.focusChanged }
             if let node = control(label, in: nodes) { return node }
-            try pause(0.04)
+            try pause(0.02)
         } while clock() < deadline
         throw WeChatAutomationError.control(label)
     }
-    private func scroll(_ list: AXUIElement, delta: Int32) throws {
+    private func scroll(_ list: AXUIElement, delta: Int32, settle: Double = WeChatScrollStep.baseGesturePause) throws {
+        let started = clock()
+        defer { scrollSeconds += clock() - started }
         try frontmost()
         let rect = WCNode(list).rect
         guard !rect.isEmpty else { throw WeChatAutomationError.selection }
         let point = CGPoint(x: rect.midX, y: rect.midY)
         let source = CGEventSource(stateID: .privateState)
-        CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
-        try pause(0.025)
+        // Whatever is left of the gap between gestures, minus everything the
+        // caller already spent looking at the result of the last one.
+        while clock() - lastGestureEnded < settle { try pause(0.02) }
+        // The wheel is already over this list unless something else moved it.
+        if lastHover != point {
+            CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
+            lastHover = point
+            try pause(0.025)
+        }
         try frontmost()
         func event(_ phase: CGScrollPhase, _ amount: Int32) -> CGEvent? {
             let event = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 1, wheel1: amount, wheel2: 0, wheel3: 0)
@@ -237,13 +276,38 @@ final class WeChatAccessibility {
             changed.post(tap: .cghidEventTap)
         } catch { ended.post(tap: .cghidEventTap); throw error }
         ended.post(tap: .cghidEventTap)
-        try pause(0.1)
+        lastGestureEnded = clock()
+    }
+
+    /// Brings WeChat forward from this worker thread.
+    ///
+    /// Same finding as `AutoPaste.bringToFront`: on macOS 14+
+    /// `NSRunningApplication.activate(options:)` is ignored when the caller is
+    /// not the frontmost app, and it never restores a minimized window.
+    /// Measured from a background process (2026-09-06), only the LaunchServices
+    /// door changed the foreground and un-minimized. The completion-handler
+    /// form is used because this engine is synchronous and runs on
+    /// `WeChatQuickForward.worker` — the semaphore is waited on there, never on
+    /// the main thread, which is where the completion may be delivered.
+    private func activate() throws {
+        try check()
+        guard let url = app.bundleURL else { throw WeChatAutomationError.notRunning }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        configuration.addsToRecentItems = false
+        let opened = DispatchSemaphore(value: 0)
+        NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, _ in opened.signal() }
+        // Capped rather than trusted: the frontmost poll below is the real
+        // check, and a LaunchServices call that never calls back must not hang
+        // a forward the user can no longer cancel.
+        _ = opened.wait(timeout: .now() + 3)
+        AutoPaste.restoreWindows(pid: app.processIdentifier)
     }
 
     private func openChat() throws {
         try check()
         let wasFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
-        app.activate(options: [])
+        try activate()
         let deadline = clock() + 3
         while NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier && clock() < deadline { try pause(0.04) }
         try frontmost()
@@ -284,11 +348,34 @@ final class WeChatAccessibility {
     /// Require two equal materialized snapshots. An empty/loading AX page is
     /// retried; it is never interpreted as a changed conversation or its end.
     private func stablePage(timeout: Double = 3) throws -> Page {
+        let started = clock()
+        defer { stableSeconds += clock() - started; checksSinceChatVerified += 1 }
         let deadline = clock() + timeout
         var previous: String?
+        // Walking WeChat's whole tree is most of what a navigation step costs,
+        // and a step only needs to know whether the list has come to rest — the
+        // list answers that itself. The walk is kept for the case where the
+        // cached list stops answering, and for one check in eight of the
+        // conversation's identity. Content is not left to that check: every
+        // step also re-matches the rows it already knew through
+        // `WeChatViewport`, which no other conversation can satisfy.
+        var verifiedHere = false
         repeat {
-            try verifyChat()
-            if let list = try scan().first(where: { $0.id == "chat_message_list" }), list.readError == .success {
+            try frontmost()
+            var found: WCNode?
+            if let settledList, checksSinceChatVerified < 8 || verifiedHere {
+                let node = WCNode(settledList)
+                if node.readError == .success, node.id == "chat_message_list" { found = node }
+            }
+            if found == nil {
+                let nodes = try scan()
+                guard chatMatches(nodes) else { throw WeChatAutomationError.focusChanged }
+                found = nodes.first { $0.id == "chat_message_list" }
+                settledList = found?.element
+                checksSinceChatVerified = 0
+                verifiedHere = true
+            }
+            if let list = found, list.readError == .success {
                 let rows = list.children.map(WCNode.init).filter {
                     $0.id == "chat_bubble_item_view" && !$0.rect.intersection(list.rect).isNull
                 }
@@ -297,9 +384,10 @@ final class WeChatAccessibility {
                     let page = Page(list: list, rows: rows)
                     if page.signature == previous { return page }
                     previous = page.signature
-                } else { previous = nil }
-            }
-            try pause(0.05)
+                } else { previous = nil; settledList = nil }
+            } else { settledList = nil }
+            // The list settles on its own; this only paces the next look.
+            try pause(0.02)
         } while clock() < deadline
         throw WeChatAutomationError.loading
     }
@@ -478,11 +566,18 @@ final class WeChatAccessibility {
         guard let index = page.rows.firstIndex(where: \.selected) else { throw WeChatAutomationError.selection }
         var tracked = WeChatViewport(rows: page.data, anchorIndex: index)
         if limit == 1 { return Selection(count: 1, newest: newest, oldest: newest, checkpoint: try checkpoint(tracked, page: page)) }
-        var gain = 1.5, unchanged = 0
+        var unchanged = 0
+        // Backed off by half whenever a step outruns the viewport tracker.
+        var reachFactor = 1.0, overshoots = 0, healthySteps = 0
         var budget = NavigationBudget(deadline: clock() + 35, maximumSteps: 120)
         while true {
             try budget.observe(page)
-            var delta: Int32 = Int32(max(10, min(400, Int(page.list.rect.height / (max(1, gain) * 2.5)))))
+            let tallest = page.rows.map(\.rect.height).max() ?? page.list.rect.height
+            var delta = WeChatScrollStep.delta(
+                reach: WeChatScrollStep.reach(listHeight: page.list.rect.height, tallestRow: tallest,
+                                              gainMeasured: gainMeasured, reachFactor: reachFactor),
+                gain: gain, ceiling: deltaCeiling
+            )
             if let target = tracked.index(of: limit - 1) {
                 let row = page.rows[target]
                 // A short interval at the live bottom cannot be scrolled to
@@ -516,14 +611,44 @@ final class WeChatAccessibility {
                 delta = Int32(max(-250, min(250, amount == 0 ? (distance >= 0 ? 1 : -1) : amount)))
             }
             let before = page
-            try scroll(page.list.element, delta: delta)
+            try scroll(page.list.element, delta: delta, settle: gesturePause)
             page = try stablePage()
             unchanged = page.signature == before.signature ? unchanged + 1 : 0
             guard unchanged < 3 else { throw WeChatAutomationError.historyIncomplete }
             do { try tracked.advance(page.data, older: delta > 0) }
-            catch { throw WeChatAutomationError.selection }
+            catch {
+                // The step outran the tracker: nothing in the new view is also
+                // in the old one. Scrolling back the same amount returns to a
+                // view the tracker still recognises, so a step that reached too
+                // far costs one extra step instead of the whole selection.
+                guard overshoots < 2 else { throw WeChatAutomationError.selection }
+                overshoots += 1
+                reachFactor = max(0.4, reachFactor / 2)
+                try scroll(page.list.element, delta: -delta)
+                page = try stablePage()
+                do { try tracked.advance(page.data, older: delta < 0) }
+                catch { throw WeChatAutomationError.selection }
+                continue
+            }
             let measured = abs(tracked.lastDisplacement / Double(delta))
-            if measured > 0.1 && measured < 100 { gain = measured }
+            if steps.count < 200 {
+                steps.append(["delta": Int(delta), "moved": Int(tracked.lastDisplacement.rounded()),
+                              "gain": (measured * 100).rounded() / 100, "pause": (gesturePause * 100).rounded() / 100,
+                              "ordinal": tracked.firstOrdinal, "want": limit - 1])
+            }
+            if WeChatScrollStep.isPlausible(gain: measured) {
+                gain = measured; gainMeasured = true
+                reachFactor = min(1, reachFactor * 1.5)
+                healthySteps += 1
+                gesturePause = WeChatScrollStep.shortened(gesturePause, healthySteps: healthySteps)
+            } else if measured < 0.4 {
+                // The gesture was clamped — WeChat is loading older history.
+                // Steering by this would ask for a larger gesture and clamp
+                // harder; wait longer for the load instead.
+                healthySteps = 0
+                gesturePause = WeChatScrollStep.lengthened(gesturePause)
+                deltaCeiling = max(300, deltaCeiling / 2)
+            }
         }
     }
 
@@ -588,6 +713,8 @@ final class WeChatAccessibility {
 
     private func nativeExport(ready: URL, shelfExtension: URL) throws -> URL {
         phase = "export"
+        let exportStarted = clock()
+        defer { exportSeconds += clock() - exportStarted }
         func ids() throws -> Set<String> {
             Set(try FileManager.default.contentsOfDirectory(at: ready, includingPropertiesForKeys: nil).map(\.lastPathComponent).filter { UUID(uuidString: $0) != nil })
         }
@@ -613,7 +740,7 @@ final class WeChatAccessibility {
             let menu = try scan()
             share = control("暂存到渡口", in: menu) ?? control("添加到 Dukou", in: menu) ?? control("Stash in Dukou", in: menu)
             if share != nil { break }
-            try pause(0.04)
+            try pause(0.02)
         } while clock() < deadline
         guard let share else { throw WeChatAutomationError.missingShare }
         try press(share)
@@ -632,7 +759,7 @@ final class WeChatAccessibility {
                     return directory
                 }
             }
-            try pause(0.05)
+            try pause(0.02)
         } while clock() < receiptDeadline
         throw WeChatAutomationError.receiptTimeout
     }
@@ -657,7 +784,7 @@ final class WeChatAccessibility {
     private func diagnostics(started: Double, outcome: String, count: Int) {
         let report: [String: Any] = ["schemaVersion": 3, "strategy": "native-range-checkpoint", "at": ISO8601DateFormatter().string(from: Date()),
             "outcome": outcome, "phase": phase, "seconds": clock() - started, "messageCount": count,
-            "scrolls": scrollCount, "scrollsByPhase": scrollsByPhase, "clicks": clickCount, "rangeClicks": rangeClicks, "shiftRangeClicks": shiftRangeClicks, "exports": exportCount, "resumedBatches": resumedBatches,
+            "scrolls": scrollCount, "scrollSeconds": scrollSeconds, "scanSeconds": scanSeconds, "scanCalls": scanCalls, "stableSeconds": stableSeconds, "exportSeconds": exportSeconds, "scrollsByPhase": scrollsByPhase, "steps": steps, "clicks": clickCount, "rangeClicks": rangeClicks, "shiftRangeClicks": shiftRangeClicks, "exports": exportCount, "resumedBatches": resumedBatches,
             "snapshots": snapshots,
             "locator": locator, "visualMilliseconds": visualMilliseconds, "lastNodeCount": lastNodeCount,
             "wechatVersion": app.bundleURL.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String } ?? "unknown"]

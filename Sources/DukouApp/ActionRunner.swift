@@ -25,6 +25,12 @@ final class ActionRunner {
     /// that list is empty.
     var openEntries: (() -> Void)?
 
+    /// Something other than the shelf that owns the top-right corner while it is
+    /// up — today the quick forward's HUD. The shelf is suspended for the length
+    /// of a forward, so without this the toast reads that corner as free and
+    /// lands on the HUD's 取消 button for as long as 8 s.
+    var reservedFrame: () -> NSRect? = { nil }
+
     private let model: AppModel
     private let shelf: ShelfController
     private let authorization: AccessibilityAuthorization
@@ -63,16 +69,11 @@ final class ActionRunner {
         self.preferences = preferences
         // The two floating windows share one corner, so the toast has to know
         // where the shelf is before it can decide not to sit on it.
-        toast.shelfFrame = { [weak shelf] in shelf?.visibleFrame }
-        // An open question parks beside the shelf, so it has to go where the
-        // shelf goes — dragged to another corner, docked by 设置, or gone
-        // altogether. Moving it, not dismissing it: §12.2.1 asks for no stray
-        // panels, and a question that disappeared because the user tidied their
-        // shelf would cancel a forward they never cancelled.
-        shelf.didRelocate = { [weak self, weak shelf] in
-            guard let self, let shelf else { return }
-            self.picker.follow { shelf.placement(for: $0) }
-        }
+        toast.shelfFrame = { [weak shelf, weak self] in shelf?.visibleFrame ?? self?.reservedFrame() }
+        // The open question is anchored to the click that raised it, not to the
+        // shelf, so moving the shelf no longer moves it. Dismissing it instead is
+        // not an option either: a question that disappeared because the user
+        // tidied their shelf would cancel a forward they never cancelled.
     }
 
     func enqueueExclusive(_ operation: @escaping @MainActor () async -> Void) {
@@ -102,6 +103,16 @@ final class ActionRunner {
             // Dukou talking over the system.
         case .codex, .claude, .custom:
             // Shares and WeChat captures share the same clipboard queue.
+            //
+            // Read here rather than where the panel opens. This forward may wait
+            // in the queue behind a 快捷微信转发, and that run drives WeChat with
+            // synthetic clicks that move the real cursor — so by the time the
+            // panel is placed the pointer is parked on whatever WeChat control
+            // the automation pressed last, on WeChat's display. Now is the
+            // moment the user's own gesture is still the last thing that moved
+            // it. `.custom` is the only action that asks anything; the others
+            // carry the value harmlessly.
+            let pointer = NSEvent.mouseLocation
             let previous = pending
             pending = Task { [weak self] in
                 await previous?.value
@@ -117,7 +128,7 @@ final class ActionRunner {
                     self.model.recordExpired(urls: arrival.urls)
                     return
                 }
-                await self.deliver(arrival)
+                await self.deliver(arrival, askingNear: pointer)
             }
         }
     }
@@ -128,7 +139,9 @@ final class ActionRunner {
     /// Every other entry — and every 发给 ▸ menu inside Dukou, which names the
     /// app in the row the user clicked — arrives knowing where it is going and
     /// goes straight through.
-    private func deliver(_ arrival: ArrivedBatch) async {
+    /// `askingNear` is where the pointer was when the share arrived — see
+    /// `handle`, which reads it before this forward can be delayed by another.
+    private func deliver(_ arrival: ArrivedBatch, askingNear pointer: NSPoint) async {
         guard arrival.action == .custom, arrival.target == nil else {
             await forward(arrival)
             return
@@ -154,8 +167,13 @@ final class ActionRunner {
             // Written before the panel opens rather than after a pick, so that
             // cancelling still leaves the user one ⌘V from their files.
             FilePasteboard.write(arrival.urls)
-            let answer = await picker.choose(from: list) { [weak shelf] size in
-                shelf?.placement(for: size) ?? NSRect(origin: .zero, size: size)
+            // Where the user was pointing when this arrived. The panel answers
+            // that gesture and stays put afterwards, so the pointer is read once,
+            // in `handle`, and never again while the panel is open. Parking it in
+            // the shelf's corner instead put it on the menu-bar screen — the wrong
+            // display for anyone whose WeChat is on the other one (2026-09-07).
+            let answer = await picker.choose(from: list) { size in
+                FloatingCapsule.near(pointer, size: size)
             }
             switch answer {
             case .picked(let target):
@@ -198,6 +216,25 @@ final class ActionRunner {
             tone: .warning
         )
     }
+
+    /// A failure from something Dukou is doing that has no window of its own to
+    /// report into.
+    ///
+    /// The quick WeChat forward is the case: it runs with WeChat in front and
+    /// 设置 behind it or closed, so `WeChatQuickForward.error` alone is a
+    /// message written on a page nobody is looking at. The capsule is the only
+    /// surface that reaches the user where the automation left them, and the
+    /// toast presenter is already the one thing that owns that corner.
+    func notify(_ message: String, action: ToastPresenter.Action? = nil) {
+        toast.show(message, symbol: "exclamationmark.triangle.fill", tone: .warning, action: action)
+    }
+
+    /// Takes down whatever is in the corner before something else claims it.
+    ///
+    /// The retry flow is the reason: a failure capsule stands for 8 s with 打开设置
+    /// on it, and 再次执行 clicked while it is up puts the HUD in the same corner,
+    /// over that button, while the capsule keeps counting down underneath.
+    func dismissNotice() { toast.dismiss() }
 
     /// One path for every destination.
     ///
