@@ -17,11 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.2</string>
-	<!-- The only caller is Dukou's own 「发送到自定义」 extension: with an empty
-	     target list it has to hand the user over to the settings window, and an
-	     app extension cannot use NSWorkspace to open anything. See
-	     Sources/DukouCore/AppLink.swift. -->
+	<string>0.1.3</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -34,27 +30,15 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>3</string>
-	<!-- The app group container both bundles read. Kept in Info.plist rather
-	     than hard-coded in Swift so one build-script substitution can retarget
-	     the app and its extension together. -->
+	<string>4</string>
 	<key>DKAppGroupIdentifier</key>
 	<string>H2P566W3PA.dev.dukou.shared</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
-	<!-- A resident receiver, not a document app: the share extension launches it
-	     in the background, where a Dock icon would only be noise. -->
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>本地文件中转工具，不解压也不上传分享内容。</string>
-	<!-- Sparkle. The feed is a signed appcast on GitHub Pages, and the DMG it
-	     points at is the same notarised file GitHub Releases serves. The key
-	     is the EdDSA public half; the private half lives only in the
-	     maintainer's keychain. Automatic checks are declared rather than asked
-	     for: the share extension starts this app in the background over
-	     WeChat, and Sparkle's permission prompt would otherwise be the first
-	     window a new user ever saw from Dukou. -->
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
