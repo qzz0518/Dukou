@@ -1,3 +1,6 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
 ## 更新日志
 
 1. **一次几百条的微信转发不再中途失败**：微信的聊天记录是用到才从磁盘读的，越往上翻越慢——实测已加载的部分每秒能过 64 条，没加载的只有 8 条。以前每一批 100 条都要重新撞上这道坎，第三、四批往往直接超时告败。现在超过 100 条会先把整段历史一次性拉到内存里再开始选，而且它会读微信自己的账：已经加载够了就直接跳过，一秒都不多花。
