@@ -34,7 +34,7 @@ The catch is that the "forward to other apps" list only shows apps that ship a s
 | **Copy to Clipboard** | Just puts it on the clipboard; the ⌘V is yours |
 | **Send to Custom** | Your own list of apps: one app just goes, two or more get a small picker card next to the pointer |
 
-One step further, Quick WeChat forward (experimental) exports, verifies and pastes the latest messages of a named group automatically, by group name and message count, with no manual selection: about 30 seconds for 300 messages.
+One step further, Quick WeChat forward (experimental) exports, verifies and pastes the latest messages of a named group automatically, by group name and message count, with no manual selection: about 20 seconds for 500 messages.
 
 > [!NOTE]
 > Early release. The five entries, the shelf, automated pasting and Sparkle updates all work end to end on the author's Mac; large archives, multiple displays and the permission guide on a fresh machine are still being verified one by one.
@@ -48,7 +48,7 @@ One step further, Quick WeChat forward (experimental) exports, verifies and past
 - **Send to any app.** The Send to Custom list is kept in Settings, and the same list backs the Send to ▸ menus on the shelf and in History. Terminal-like apps can receive quoted file paths instead of files.
 - **Attached prompt.** When sending to Codex, Claude, a custom app or through the quick WeChat forward, a prompt of your own is pasted first, then the files (for terminal-like apps it is folded in ahead of the paths). One summary prompt comes built in; keep up to three and switch between them.
 - **Failures always have a way out.** App not installed, permission missing, app never came forward: the files are already on the clipboard, and the message offers to put them on the shelf. Success shows nothing.
-- **Quick WeChat forward (experimental).** Name a group and a message count; Dukou drives WeChat through Accessibility to select and merge-forward the messages, verifies the exported ZIP, and pastes it into the app you are using — even when that app is behind another window or minimized. About 30 seconds for 300 messages, batched automatically past 100. A capsule in the corner names each step and cancels on one click; until it finishes, the mouse and keyboard belong to Dukou.
+- **Quick WeChat forward (experimental).** Name a group and a message count; Dukou drives WeChat through Accessibility to select and merge-forward the messages, verifies the exported ZIP, and pastes it into the app you are using — even when that app is behind another window or minimized. About 20 seconds for 500 messages, batched automatically past 100. A capsule in the corner names each step and cancels on one click; until it finishes, the mouse and keyboard belong to Dukou.
 - **Safe updates.** Sparkle checks for EdDSA-signed releases and downloads only the one you confirm, from GitHub Releases.
 - **Simplified Chinese and English** throughout, share-menu entries included.
 

@@ -256,6 +256,7 @@
 // WeChat selection recovery
 "微信消息列表尚未稳定。请等待加载完成后重试。" = "The WeChat message list has not settled. Wait for loading to finish, then try again.";
 "正在加载更早的聊天记录 · 已加载 %d 条" = "Loading earlier messages · %d loaded";
+"正在加载更早的聊天记录…" = "Loading earlier chat messages…";
 "正在选择并导出消息 · 已完成 %d 条" = "Selecting and exporting messages · %d complete";
 "没有定位到“转发到其他应用”按钮，已停止。请保持微信转发窗口完整可见。" = "Could not locate Forward to Other Apps. Keep the entire WeChat forward window visible and try again.";
 "这个转发界面需要识别按钮位置。请在系统设置中为渡口开启屏幕录制权限后重试。" = "This forward layout needs visual button recognition. Enable Screen Recording for Dukou in System Settings and try again.";

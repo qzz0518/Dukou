@@ -83,6 +83,74 @@ final class WeChatForwardTests: XCTestCase {
         XCTAssertThrowsError(try WeChatTranscriptRecord.parse("unrecognized text"))
     }
 
+    func testChannelsCardMatchesCompleteAuthorAndNativeURLFormat() throws {
+        for author in ["星河实验室", "星河实验室 Studio"] {
+            let card = try records([("2026年9月5日 08:06", "[视频号] \(author) https://weixin.qq.com/sph/Example_90-z")])[0]
+            XCTAssertTrue(WeChatSelectedMessage(description: "群昵称 视频号\(author)").matches(card, attachmentNames: []))
+            XCTAssertTrue(WeChatSelectedMessage(description: "群昵称 视频号\(author)\n引用 虚构引用内容").matches(card, attachmentNames: []))
+            XCTAssertFalse(WeChatSelectedMessage(description: "群昵称 视频号\(author)分号").matches(card, attachmentNames: []))
+            XCTAssertFalse(WeChatSelectedMessage(description: "群昵称 视频号别的\(author)").matches(card, attachmentNames: []))
+            XCTAssertFalse(WeChatSelectedMessage(description: "群昵称 视频号\(author) 额外文本").matches(card, attachmentNames: []))
+        }
+    }
+
+    func testQuotedMediaKeepsTypeAndAttachmentVerification() throws {
+        let native = try records([
+            ("2026年9月5日 08:06", "[动画表情]"),
+            ("2026年9月5日 08:07", "images/example.png"),
+            ("2026年9月5日 08:08", "[语音]"),
+        ])
+        let emoji = WeChatSelectedMessage(description: "群昵称 动画表情\n引用 虚构引用内容")
+        XCTAssertTrue(emoji.matches(native[0], attachmentNames: []))
+        XCTAssertFalse(emoji.matches(native[2], attachmentNames: []))
+
+        let image = WeChatSelectedMessage(description: "群昵称 图片\n引用 虚构引用内容")
+        XCTAssertTrue(image.matches(native[1], attachmentNames: ["example.png"]))
+        XCTAssertFalse(image.matches(native[1], attachmentNames: []))
+        XCTAssertFalse(image.matches(native[1], attachmentNames: ["different.png"]))
+        XCTAssertFalse(image.matches(native[0], attachmentNames: []))
+        XCTAssertFalse(WeChatSelectedMessage(description: "群昵称 普通文字\n引用 图片").matches(native[1], attachmentNames: ["example.png"]))
+    }
+
+    func testQuoteHandlingPreservesExactTextAndRequiresExplicitSuffix() throws {
+        let literal = try records([("2026年9月5日 08:06", "正文\n引用 也是正文的一部分")])[0]
+        XCTAssertTrue(WeChatSelectedMessage(description: "群昵称 正文\n引用 也是正文的一部分").matches(literal, attachmentNames: []))
+
+        let emoji = try records([("2026年9月5日 08:06", "[动画表情]")])[0]
+        XCTAssertFalse(WeChatSelectedMessage(description: "群昵称 动画表情\n引用没有分隔空格").matches(emoji, attachmentNames: []))
+        XCTAssertFalse(WeChatSelectedMessage(description: "群昵称 动画表情\n其他尾文").matches(emoji, attachmentNames: []))
+        XCTAssertFalse(WeChatSelectedMessage(description: "群昵称 动画表情额外文字\n引用 虚构引用内容").matches(emoji, attachmentNames: []))
+    }
+
+    func testChannelsCardRejectsWrongAuthorsMalformedURLsAndExtraText() throws {
+        let selected = WeChatSelectedMessage(description: "群昵称 视频号星河实验室")
+        let invalid = [
+            "[视频号] 星河 https://weixin.qq.com/sph/Example",
+            "[视频号] 星河实验室分号 https://weixin.qq.com/sph/Example",
+            "[视频号] 星河实验室",
+            "[视频号] 星河实验室 http://weixin.qq.com/sph/Example",
+            "[视频号] 星河实验室 https://weixin.qq.com.evil.example/sph/Example",
+            "[视频号] 星河实验室 https://fake.weixin.qq.com/sph/Example",
+            "[视频号] 星河实验室 https://weixin.qq.com@evil.example/sph/Example",
+            "[视频号] 星河实验室 https://weixin.qq.com:443/sph/Example",
+            "[视频号] 星河实验室 https://weixin.qq.com/sph/",
+            "[视频号] 星河实验室 https://weixin.qq.com/sph/Example/extra",
+            "[视频号] 星河实验室 https://weixin.qq.com/sph/Example?extra=1",
+            "[视频号] 星河实验室 https://weixin.qq.com/sph/Example#extra",
+            "[视频号] 星河实验室 https://weixin.qq.com/sph/Example%20id",
+            "[视频号] 星河实验室 https://weixin.qq.com/sph/Example+id",
+            "[视频号] 星河实验室 https://weixin.qq.com/sph/Example 额外文本",
+            "[视频号] 星河实验室 https://weixin.qq.com/sph/Example\n额外文本",
+            "额外文本 [视频号] 星河实验室 https://weixin.qq.com/sph/Example",
+            "[视频号]  星河实验室 https://weixin.qq.com/sph/Example",
+            "[视频号] 星河实验室  https://weixin.qq.com/sph/Example",
+        ]
+        for text in invalid {
+            let card = try records([("2026年9月5日 08:06", text)])[0]
+            XCTAssertFalse(selected.matches(card, attachmentNames: []), text)
+        }
+    }
+
     // Independently generated with Python's zipfile: two repeated multiline
     // messages, a media reference, UTF-8 filenames, and an attachment CRC.
     private let storedZIP = "UEsDBBQAAAgAAMBAJV0fGRySiQAAAIkAAAAQAAAA6IGK5aSp6K6w5b2VLnR4dMK355SyCjIwMjblubQ55pyINeaXpSAwODowNQrkvaDlpb0K56ys5LqM6KGMCgrCt+S5mQoyMDI25bm0OeaciDXml6UgMDg6MDUK5L2g5aW9CuesrOS6jOihjAoKwrfnlLIKMjAyNuW5tDnmnIg15pelIDA4OjA2CmltYWdlcy9waG90by5wbmcKUEsDBBQAAAAAAMBAJV2KfiaRIAAAACAAAAAQAAAAaW1hZ2VzL3Bob3RvLnBuZwABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fUEsBAhQDFAAACAAAwEAlXR8ZHJKJAAAAiQAAABAAAAAAAAAAAAAAAIABAAAAAOiBiuWkqeiusOW9lS50eHRQSwECFAMUAAAAAADAQCVdin4mkSAAAAAgAAAAEAAAAAAAAAAAAAAAgAG3AAAAaW1hZ2VzL3Bob3RvLnBuZ1BLBQYAAAAAAgACAHwAAAAFAQAAAAA="
@@ -117,6 +185,86 @@ final class WeChatForwardTests: XCTestCase {
         try viewport.advance([row("A", 30), row("B", 130), row("C", 230)], older: false)
         XCTAssertEqual(viewport.firstOrdinal, 2)
         XCTAssertThrowsError(try viewport.advance([row("unrelated", 10)], older: true))
+    }
+
+    func testViewportReconstructsIndicesAroundAKnownOrdinal() {
+        let rows = ["older", "anchor", "newer"].enumerated().map {
+            WeChatViewportRow(text: $1, y: Double($0) * 100, height: 100)
+        }
+        let viewport = WeChatViewport(rows: rows, anchorIndex: 1, anchorOrdinal: 100)
+        XCTAssertEqual(viewport.firstOrdinal, 101)
+        XCTAssertEqual(viewport.index(of: 100), 1)
+        XCTAssertEqual(viewport.index(of: 101), 0)
+        XCTAssertEqual(viewport.index(of: 99), 2)
+        XCTAssertNil(viewport.index(of: 102))
+        XCTAssertNil(viewport.index(of: 98))
+        XCTAssertEqual(WeChatViewport(rows: rows, anchorIndex: 1).index(of: 0), 1)
+    }
+
+    func testViewportKeepsKnownOrdinalThroughResumeAndRepeatedOverlap() throws {
+        func row(_ text: String, _ y: Double) -> WeChatViewportRow { .init(text: text, y: y, height: 100) }
+        // Keyboard navigation found ordinal 99 at the second repeated row.
+        var viewport = WeChatViewport(
+            rows: [row("boundary", -20), row("repeated", 80), row("repeated", 180), row("newer", 280)],
+            anchorIndex: 2, anchorOrdinal: 99
+        )
+        try viewport.resume([row("boundary", 0), row("repeated", 100), row("repeated", 200), row("newer", 300)])
+        XCTAssertEqual(viewport.firstOrdinal, 101)
+        XCTAssertEqual(viewport.index(of: 99), 2)
+        XCTAssertEqual(viewport.lastDisplacement, 20)
+
+        try viewport.advance([row("older", 0), row("boundary", 100), row("repeated", 200), row("repeated", 300)], older: true)
+        XCTAssertEqual(viewport.firstOrdinal, 102)
+        XCTAssertEqual(viewport.index(of: 100), 2)
+        XCTAssertEqual(viewport.index(of: 99), 3)
+        XCTAssertNil(viewport.index(of: 98))
+        XCTAssertEqual(viewport.lastDisplacement, 100)
+
+        // Both repeated occurrences participate in the overlap on the way back.
+        try viewport.advance([row("repeated", 0), row("repeated", 100), row("newer", 200), row("latest", 300)], older: false)
+        XCTAssertEqual(viewport.firstOrdinal, 100)
+        XCTAssertEqual(viewport.index(of: 100), 0)
+        XCTAssertEqual(viewport.index(of: 99), 1)
+        XCTAssertEqual(viewport.index(of: 98), 2)
+        XCTAssertEqual(viewport.lastDisplacement, -200)
+    }
+
+    func testRangeSelectionOfOversizedEndpointRequiresInsetAndKeyboardProof() {
+        func viewport(_ y: Double) -> WeChatViewport {
+            .init(rows: [.init(text: "oversized", y: y, height: 1370)], anchorIndex: 0, anchorOrdinal: 99)
+        }
+        for keyboardVerified in [false, true] {
+            XCTAssertFalse(viewport(139).canSelectRange(endingAt: 99, listTop: 139, listHeight: 629, keyboardVerified: keyboardVerified))
+        }
+        XCTAssertTrue(viewport(147).canSelectRange(endingAt: 99, listTop: 139, listHeight: 629, keyboardVerified: true))
+        XCTAssertFalse(viewport(147).canSelectRange(endingAt: 99, listTop: 139, listHeight: 629, keyboardVerified: false))
+        XCTAssertFalse(viewport(147).canSelectRange(endingAt: 100, listTop: 139, listHeight: 629, keyboardVerified: true))
+    }
+
+    func testRangeSelectionIgnoresPartialOlderRowButRejectsAnotherStartingInside() {
+        func viewport(olderY: Double, olderHeight: Double) -> WeChatViewport {
+            .init(rows: [
+                .init(text: "older", y: olderY, height: olderHeight),
+                .init(text: "oversized", y: 147, height: 1370),
+            ], anchorIndex: 1, anchorOrdinal: 199)
+        }
+        XCTAssertTrue(viewport(olderY: 39, olderHeight: 108).canSelectRange(endingAt: 199, listTop: 139, listHeight: 629, keyboardVerified: true))
+        XCTAssertFalse(viewport(olderY: 39, olderHeight: 108).canSelectRange(endingAt: 199, listTop: 139, listHeight: 629, keyboardVerified: false))
+        XCTAssertFalse(viewport(olderY: 143, olderHeight: 4).canSelectRange(endingAt: 199, listTop: 139, listHeight: 629, keyboardVerified: true))
+    }
+
+    func testRangeSelectionRetainsFirstFullyVisibleEndpointBehavior() {
+        let viewport = WeChatViewport(rows: [
+            .init(text: "partial older", y: 39, height: 108),
+            .init(text: "endpoint", y: 147, height: 100),
+            .init(text: "newer", y: 247, height: 100),
+        ], anchorIndex: 1, anchorOrdinal: 99)
+        for keyboardVerified in [false, true] {
+            XCTAssertTrue(viewport.canSelectRange(endingAt: 99, listTop: 139, listHeight: 629, keyboardVerified: keyboardVerified))
+            XCTAssertFalse(viewport.canSelectRange(endingAt: 98, listTop: 139, listHeight: 629, keyboardVerified: keyboardVerified))
+        }
+        let flush = WeChatViewport(rows: [.init(text: "endpoint", y: 139, height: 100)], anchorIndex: 0)
+        XCTAssertFalse(flush.canSelectRange(endingAt: 0, listTop: 139, listHeight: 629, keyboardVerified: false))
     }
 
     func testSecondBatchResumesAtExactlyOneMessageOlderThanFirstHundred() throws {

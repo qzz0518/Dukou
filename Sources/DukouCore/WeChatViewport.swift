@@ -11,12 +11,13 @@ public struct WeChatViewportRow: Equatable, Sendable {
 
 public struct WeChatViewport: Sendable {
     public private(set) var rows: [WeChatViewportRow]
-    /// Distance older than the selected anchor, for the first visible row.
+    /// Ordinal of the first visible row; larger values are older messages.
     public private(set) var firstOrdinal: Int
     public private(set) var lastDisplacement: Double = 0
 
-    public init(rows: [WeChatViewportRow], anchorIndex: Int) {
-        self.rows = rows; firstOrdinal = anchorIndex
+    /// Reconstruct a fresh viewport around a message whose ordinal is known.
+    public init(rows: [WeChatViewportRow], anchorIndex: Int, anchorOrdinal: Int = 0) {
+        self.rows = rows; firstOrdinal = anchorOrdinal + anchorIndex
     }
 
     /// A sheet transition invalidates AX handles. Resume only after a fresh
@@ -55,6 +56,15 @@ public struct WeChatViewport: Sendable {
     public func index(of ordinal: Int) -> Int? {
         let index = firstOrdinal - ordinal
         return rows.indices.contains(index) ? index : nil
+    }
+
+    /// Qt excludes an endpoint flush against the list's top edge. A message
+    /// taller than the viewport can only qualify with a keyboard-verified ordinal.
+    public func canSelectRange(endingAt ordinal: Int, listTop: Double, listHeight: Double, keyboardVerified: Bool) -> Bool {
+        guard let target = index(of: ordinal), rows[target].y >= listTop + 4 else { return false }
+        let firstFullyVisible = rows.firstIndex { $0.y >= listTop && $0.y + $0.height <= listTop + listHeight }
+        if firstFullyVisible == target { return true }
+        return keyboardVerified && rows.firstIndex(where: { $0.y >= listTop + 4 }) == target
     }
 }
 

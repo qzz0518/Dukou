@@ -152,8 +152,20 @@ public struct WeChatSelectedMessage: Equatable, Sendable {
         // AX includes the quoted preview; WeChat's native transcript keeps the
         // reply body. Only this explicit AX suffix is ignored, not arbitrary
         // truncation or fuzzy text matching.
-        if let quote = description.range(of: "\n引用 "), hasBody(String(description[..<quote.lowerBound]), record.text) { return true }
-        guard let kind = ["图片", "视频", "文件", "语音", "动画表情", "表情"].first(where: { hasBody(description, $0) || hasBody(description, "[\($0)]") }) else { return false }
+        let unquotedDescription = description.range(of: "\n引用 ").map { String(description[..<$0.lowerBound]) } ?? description
+        if hasBody(unquotedDescription, record.text) { return true }
+        // AX exposes a Channels card's author, but not its video URL. Match
+        // that complete author and the exact native card format; the caller
+        // still verifies the message count and order independently.
+        if record.text.hasPrefix("[视频号] "),
+           let pattern = try? NSRegularExpression(pattern: #"\A\[视频号\] ([^\r\n]+) https://weixin\.qq\.com/sph/[A-Za-z0-9_-]+\z"#),
+           let match = pattern.firstMatch(in: record.text, range: NSRange(record.text.startIndex..., in: record.text)),
+           let authorRange = Range(match.range(at: 1), in: record.text) {
+            let author = String(record.text[authorRange])
+            if author == author.trimmingCharacters(in: .whitespacesAndNewlines),
+               hasBody(unquotedDescription, "视频号" + author) { return true }
+        }
+        guard let kind = ["图片", "视频", "文件", "语音", "动画表情", "表情"].first(where: { hasBody(unquotedDescription, $0) || hasBody(unquotedDescription, "[\($0)]") }) else { return false }
         // Native WeChat exports some non-file message types as placeholders.
         // Accept that exact representation without claiming an attachment.
         if ["语音", "动画表情", "表情"].contains(kind), record.text == "[\(kind)]" { return true }
