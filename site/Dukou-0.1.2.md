@@ -1,3 +1,6 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
 ## 更新日志
 
 1. **快捷微信转发能送到不在最前面的应用**：以前目标 App 只要被挡住或最小化就一定失败。现在 Dukou 会先把它带到前台，最小化的窗口也还原回来，再粘贴。
