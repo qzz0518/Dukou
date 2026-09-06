@@ -6,6 +6,16 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Dukou</title>
         <item>
+            <title>0.1.5</title>
+            <pubDate>Mon, 07 Sep 2026 07:15:53 +0900</pubDate>
+            <link>https://github.com/qzz0518/Dukou</link>
+            <sparkle:version>6</sparkle:version>
+            <sparkle:shortVersionString>0.1.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:releaseNotesLink sparkle:edSignature="piRZz8jiquonXfHFAQS9tTTrMbGYIOSFjyf1WEMigc8/t0BKkgqc7ictr+ZqxZL5LLCeO0YgjbAAgdMzoapVDg==" sparkle:length="1550">https://qzz0518.github.io/Dukou/Dukou-0.1.5.md</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/qzz0518/Dukou/releases/download/v0.1.5/Dukou-0.1.5.dmg" length="7783668" type="application/octet-stream" sparkle:edSignature="4/aE94OCWfRqsrA5Y9Ao6jUoyVEGlBu6xS9EGZWFyG07PwXpzgXRhCpVlgw5lVyKVAnMEqGM0d9WZPEIlBQ2DA=="/>
+        </item>
+        <item>
             <title>0.1.4</title>
             <pubDate>Mon, 07 Sep 2026 06:10:00 +0900</pubDate>
             <link>https://github.com/qzz0518/Dukou</link>
@@ -25,19 +35,9 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
             <sparkle:releaseNotesLink sparkle:edSignature="W4C4s1/oKym9LMpkgw77x4xBi24owNq+eTDoswzDTMOvGJ4RU98l3U9bxF3923LyJmtDrdVULO7989bJwBzQBQ==" sparkle:length="3607">https://qzz0518.github.io/Dukou/Dukou-0.1.3.md</sparkle:releaseNotesLink>
             <enclosure url="https://github.com/qzz0518/Dukou/releases/download/v0.1.3/Dukou-0.1.3.dmg" length="7709654" type="application/octet-stream" sparkle:edSignature="+daoBb37qFbcPdDndpMz7u8CfhoU1CIlLQQItv6fUeer/k+Jtp+MbsU86lwhciRDGEBwpk3VciWQ+2VietqcAQ=="/>
         </item>
-        <item>
-            <title>0.1.2</title>
-            <pubDate>Mon, 07 Sep 2026 02:07:01 +0900</pubDate>
-            <link>https://github.com/qzz0518/Dukou</link>
-            <sparkle:version>3</sparkle:version>
-            <sparkle:shortVersionString>0.1.2</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:releaseNotesLink sparkle:edSignature="Sq2EF6NSPDbNOdKK7S41jXCzbp3GvfsoYwCEuPb88f3XAhoQZuUvZUVAk9NapBJMJFH4f6gQrBoP7dZZSVGZCA==" sparkle:length="2419">https://qzz0518.github.io/Dukou/Dukou-0.1.2.md</sparkle:releaseNotesLink>
-            <enclosure url="https://github.com/qzz0518/Dukou/releases/download/v0.1.2/Dukou-0.1.2.dmg" length="7651556" type="application/octet-stream" sparkle:edSignature="iF26Ttceo7pjWn6pmy4yJ59BrLZwlloEOLy8H1aYCUgmmYoHLStmz8NUcDjQeCk8JeXoXKi0Iggy3n9EOuG7BQ=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: kQ9uaMhKH/Ih+D/18gT6GDH8e4G4jMcgAz1f/eNCWjQJAeaJrUpczSIGEXaO646RgoUP6Z33nuAADOrjdOAQDw==
+edSignature: jfSd6HpfRGdn1QcHszXv18mYZR7+iUHIWTsFGMEmhgLqTbhiCrOtg2tol8NK4acLtlMlQiZL8DPycCma5WCsBQ==
 length: 3120
 -->

@@ -1,3 +1,6 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
 ## 更新日志
 
 1. **加载历史更快**：以前每翻一页历史都要跑回最新消息确认一次；现在通过焦点位置的变化直接判断加载了多少，全程只在最后回来一次。
