@@ -1,3 +1,6 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
 ## 更新日志
 
 1. **右键那一下没生效不再让整轮转发失败**。滚动刚停下时右键，微信有时会把菜单弹出来，但这一下并没有真的选中消息；而 Qt 的菜单项不提供 AXPress，只能合成点击，弹窗坐标还在动的时候点下去就会落空。现在「右键 → 多选 → 合并转发」整段都会重试，最多四次，消息气泡的左右两个落点轮着来，每次重试都按当前的行位置重新定位锚点；菜单项也要连续两次扫描位置一致，才会被点。
