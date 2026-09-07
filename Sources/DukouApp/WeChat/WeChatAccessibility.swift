@@ -265,20 +265,24 @@ final class WeChatAccessibility {
         return matches.count == 1 ? matches.first : nil
     }
 
-    private func waitControl(_ label: String, timeout: Double = 2) throws -> WCNode {
+    private func waitControl(_ label: String, timeout: Double = 2, settled: Bool = false) throws -> WCNode {
         let deadline = clock() + timeout
         var relaxed: WCNode?
+        var previous: WCNode?
         repeat {
             try frontmost()
             let nodes = try scan()
             guard chatMatches(nodes) else { throw WeChatAutomationError.focusChanged }
-            if let node = control(label, in: nodes) { return node }
+            if let node = control(label, in: nodes) {
+                if !settled || previous.map({ CFEqual($0.element, node.element) && $0.rect == node.rect }) == true { return node }
+                previous = node
+            } else { previous = nil }
             // Kept, not taken: the strict match may still be a frame away, and
             // it is the one that has been verified against this UI.
-            if relaxed == nil { relaxed = looseControl(label, in: nodes) }
+            relaxed = looseControl(label, in: nodes)
             try pause(0.02)
         } while clock() < deadline
-        if let relaxed {
+        if !settled, let relaxed {
             locator = locator.isEmpty ? "loose-control" : locator + "+loose-control"
             return relaxed
         }
@@ -523,31 +527,57 @@ final class WeChatAccessibility {
         return label.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func beginSelection(at node: WCNode, viewport: CGRect) throws -> (String, Page) {
+    private func beginSelection(at index: Int, in initialPage: Page) throws -> (String, Page) {
         phase = "select-anchor-menu"
-        // A tall bubble's centre can be inside a quoted-message preview. Its
-        // context menu then targets the quote. Click the main body near its top.
-        let y = node.rect.minY + min(50, node.rect.height / 2)
-        guard y > viewport.minY + 4, y < viewport.maxY - 4 else { throw WeChatAutomationError.selection }
-        var multi: WCNode?
-        for x in [node.rect.minX + min(85, node.rect.width / 2), node.rect.maxX - min(85, node.rect.width / 2)] {
-            try click(CGPoint(x: x, y: y), right: true)
-            do { multi = try waitControl("多选", timeout: 0.5); break }
+        guard initialPage.rows.indices.contains(index) else { throw WeChatAutomationError.selection }
+        var page = initialPage
+        var tracked = WeChatViewport(rows: page.data, anchorIndex: index)
+        var failure: Error = WeChatAutomationError.selection
+        // A menu can appear without its click taking effect immediately after
+        // scrolling. Retry the whole transition, not just finding the label.
+        // Both sides get another chance, using the current boundary geometry.
+        for attempt in 0..<4 {
+            if attempt > 0 {
+                try verifyChat()
+                if ownsSelection { try restoreSelection() }
+                page = try stablePage()
+                do { try tracked.resume(page.data) } catch { throw WeChatAutomationError.selection }
+            }
+            guard let current = tracked.index(of: 0), page.rows.indices.contains(current) else { throw WeChatAutomationError.selection }
+            let node = page.rows[current], viewport = page.list.rect
+            // Stay in the main body, above a quoted-message preview.
+            let y = node.rect.minY + min(50, node.rect.height / 2)
+            guard y > viewport.minY + 4, y < viewport.maxY - 4 else { throw WeChatAutomationError.selection }
+            let inset = min(85, node.rect.width / 2)
+            let x = attempt.isMultiple(of: 2) ? node.rect.minX + inset : node.rect.maxX - inset
+            do {
+                try click(CGPoint(x: x, y: y), right: true)
+                let multi = try waitControl("多选", timeout: 0.5, settled: true)
+                steps.append(["kind": "selection-menu", "attempt": attempt + 1, "rowY": node.rect.minY,
+                              "menuY": multi.rect.minY, "menuX": multi.rect.minX])
+                // Qt's menu items expose no AXPress. Their popup coordinates
+                // must have settled before the synthetic click is posted.
+                ownsSelection = true
+                try press(multi)
+                _ = try waitControl("合并转发", timeout: attempt == 3 ? 2 : 0.5)
+                let selectedPage = try stablePage()
+                let selected = selectedPage.rows.filter(\.selected)
+                guard selected.count == 1, let first = selected.first,
+                      node.strings.contains(where: { normal in first.strings.contains { $0 == normal || $0.hasSuffix(" " + normal) } }) else {
+                    throw WeChatAutomationError.selection
+                }
+                observe("anchor-selected", selectedPage)
+                return (try checkedMessage(first), selectedPage)
+            }
             catch is CancellationError { throw CancellationError() }
-            catch { try frontmost() }
+            catch let error as WeChatAutomationError {
+                switch error {
+                case .control, .selection: failure = error
+                default: throw error
+                }
+            }
         }
-        guard let multi else { throw WeChatAutomationError.selection }
-        try press(multi)
-        ownsSelection = true
-        _ = try waitControl("合并转发")
-        let page = try stablePage()
-        observe("anchor-selected", page)
-        let selected = page.rows.filter(\.selected)
-        guard selected.count == 1, let first = selected.first,
-              node.strings.contains(where: { normal in first.strings.contains { $0 == normal || $0.hasSuffix(" " + normal) } }) else {
-            throw WeChatAutomationError.selection
-        }
-        return (try checkedMessage(first), page)
+        throw failure
     }
 
     private struct Selection {
@@ -611,14 +641,14 @@ final class WeChatAccessibility {
         }
     }
 
-    private func leaveSelection(page: Page, index: Int) throws -> (WCNode, CGRect) {
+    private func leaveSelection(page: Page, index: Int) throws -> (Int, Page) {
         let context = try page.rows.map { try checkedMessage($0) }
         try restoreSelection()
         let normal = try stablePage()
         let rebound: Int
         do { rebound = try WeChatMessageContext.resolve(selected: context, target: index, normal: normal.rows.map { $0.strings.first ?? "" }) }
         catch { throw WeChatAutomationError.selection }
-        return (normal.rows[rebound], normal.list.rect)
+        return (rebound, normal)
     }
 
     /// At the latest message, AXChildren counts loaded slots, including time
@@ -881,7 +911,7 @@ final class WeChatAccessibility {
 
     private func selectBatch(limit: Int, start: SelectionStart, latestPage: Page? = nil) throws -> Selection {
         phase = "select-anchor"
-        let anchor: WCNode, viewport: CGRect
+        let anchorIndex: Int, anchorPage: Page
         switch start {
         case .resume(let saved, let ordinal):
             phase = ordinal == 0 ? "time-boundary-anchor" : "next-batch-anchor"
@@ -914,8 +944,8 @@ final class WeChatAccessibility {
                                   !stillSelecting || page.rows[previous].selected else { throw WeChatAutomationError.selection }
                         }
                         observe("confirmed-anchor", page)
-                        if stillSelecting { (anchor, viewport) = try leaveSelection(page: page, index: index) }
-                        else { anchor = row; viewport = page.list.rect }
+                        if stillSelecting { (anchorIndex, anchorPage) = try leaveSelection(page: page, index: index) }
+                        else { anchorIndex = index; anchorPage = page }
                         resumedBatches += 1
                         break
                     }
@@ -939,9 +969,9 @@ final class WeChatAccessibility {
             if let latestPage { page = latestPage }
             else { page = try returnToLatest(from: try stablePage()) }
             guard let latest = page.rows.last, page.canCheck(latest) else { throw WeChatAutomationError.selection }
-            anchor = latest; viewport = page.list.rect
+            anchorIndex = page.rows.count - 1; anchorPage = page
         }
-        let (newest, selectedPage) = try beginSelection(at: anchor, viewport: viewport)
+        let (newest, selectedPage) = try beginSelection(at: anchorIndex, in: anchorPage)
         phase = "select-range"
         // Every batch needs the exact first visible message before pressing
         // the range button. Track overlapping content and measured motion,
