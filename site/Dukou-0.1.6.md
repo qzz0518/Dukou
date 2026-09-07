@@ -1,3 +1,6 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
 ## 更新日志
 
 1. **不再因为「没见过的消息类型」中断转发**。以前会把微信导出的每条记录和界面上的消息逐条比对，可这个比对得先认识消息类型——红包、视频号、合并的聊天记录卡片、带名字的表情、视频通话，每一种都要单独写规则，而且都是先失败过一次才补上的。没补到的类型就直接中止，哪怕微信已经正确导出了。现在直接交付微信导出的原始 ZIP。
