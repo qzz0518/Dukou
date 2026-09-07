@@ -192,6 +192,66 @@ final class WeChatForwardTests: XCTestCase {
         XCTAssertEqual(viewport.lastDisplacement, -200)
     }
 
+    func testResumeKeepsExistingOrdinalsWhenLiveMessagesChangeVisibleRows() throws {
+        func row(_ text: String, _ y: Double) -> WeChatViewportRow { .init(text: text, y: y, height: 100) }
+        let original = [row("A", 0), row("B", 100), row("C", 200)]
+        for (next, targetIndex) in [
+            ([row("A", 0), row("B", 100), row("C", 200), row("D", 300)], 1),
+            ([row("B", 0), row("C", 100), row("D", 200)], 0),
+        ] {
+            var viewport = WeChatViewport(rows: original, anchorIndex: 1, anchorOrdinal: 100)
+            XCTAssertNoThrow(try viewport.resume(next))
+            XCTAssertEqual(viewport.index(of: 100), targetIndex)
+        }
+    }
+
+    func testResumeAfterSelectionToleratesLiveMessageAndCardRelayout() throws {
+        var viewport = WeChatViewport(rows: [
+            .init(text: "Sender A", y: 0, height: 100),
+            .init(text: "Sender B", y: 100, height: 100),
+            .init(text: "Sender C", y: 200, height: 100),
+        ], anchorIndex: 1, anchorOrdinal: 100)
+        try viewport.resume([
+            .init(text: "A", y: 20, height: 100),
+            .init(text: "B", y: 120, height: 130),
+            .init(text: "C", y: 250, height: 100),
+            .init(text: "D", y: 350, height: 100),
+        ], afterLeavingSelection: true)
+        XCTAssertEqual(viewport.firstOrdinal, 101)
+        XCTAssertEqual(viewport.index(of: 100), 1)
+    }
+
+    func testAdvanceKeepsExistingOrdinalsAfterOppositeLiveMessageShift() throws {
+        func row(_ text: String, _ y: Double) -> WeChatViewportRow { .init(text: text, y: y, height: 100) }
+        let original = [row("A", 0), row("B", 100), row("C", 200)]
+        for (next, targetIndex) in [
+            ([row("A", -50), row("B", 50), row("C", 150), row("D", 250)], 1),
+            ([row("B", 0), row("C", 100), row("D", 200)], 0),
+        ] {
+            var viewport = WeChatViewport(rows: original, anchorIndex: 1, anchorOrdinal: 100)
+            XCTAssertNoThrow(try viewport.advance(next, older: true))
+            XCTAssertEqual(viewport.index(of: 100), targetIndex)
+        }
+    }
+
+    func testAdvanceRepeatedLiveMessagesPreferNearbyExistingOrdinal() throws {
+        func row(_ y: Double) -> WeChatViewportRow { .init(text: "repeated", y: y, height: 100) }
+        var viewport = WeChatViewport(rows: [row(0), row(100), row(200)], anchorIndex: 2)
+        try viewport.advance([row(-100), row(0), row(100), row(200)], older: true)
+        XCTAssertEqual(viewport.firstOrdinal, 2)
+        XCTAssertEqual(viewport.lastDisplacement, -100)
+    }
+
+    func testContextResolvesWhenLiveTailChangesOverlapLength() throws {
+        let selected = ["Sender A", "Sender B", "Sender C"]
+        XCTAssertEqual(try WeChatMessageContext.resolve(selected: selected, target: 1, normal: ["B", "C"]), 0)
+        XCTAssertEqual(try WeChatMessageContext.resolve(selected: selected, target: 1, normal: ["B", "C", "D"]), 0)
+    }
+
+    func testContextRepeatedLiveMessagesPreferOriginalVisiblePosition() throws {
+        XCTAssertEqual(try WeChatMessageContext.resolve(selected: ["Sender R", "Sender R", "Sender R"], target: 1, normal: ["R", "R", "R", "R"]), 1)
+    }
+
     func testRangeSelectionOfOversizedEndpointRequiresInsetAndKeyboardProof() {
         func viewport(_ y: Double) -> WeChatViewport {
             .init(rows: [.init(text: "oversized", y: y, height: 1370)], anchorIndex: 0, anchorOrdinal: 99)
@@ -238,9 +298,10 @@ final class WeChatForwardTests: XCTestCase {
         try viewport.advance([row("m100", 0), row("m99", 100), row("m98", 200)], older: true)
         XCTAssertEqual(viewport.index(of: 100), 0)
         XCTAssertEqual(viewport.index(of: 99), 1)
-        // Jumping to a different message after closing the sheet must fail
-        // before posting any recovery scroll, even if the row count matches.
-        XCTAssertThrowsError(try viewport.resume([row("older", 0), row("m100", 100), row("m99", 200)]))
+        // A newly visible row changes indices without changing known ordinals.
+        try viewport.resume([row("older", 0), row("m100", 100), row("m99", 200)])
+        XCTAssertEqual(viewport.index(of: 100), 1)
+        XCTAssertThrowsError(try viewport.resume([row("unrelated", 0)]))
     }
 
     func testExternalSharingExitsMultiSelectWithoutLosingTheNextBatchPosition() throws {
@@ -252,7 +313,9 @@ final class WeChatForwardTests: XCTestCase {
         try viewport.advance([row("第101条", 0), row("第100条", 100), row("第99条", 200)], older: true)
         XCTAssertEqual(viewport.index(of: 100), 0)
         XCTAssertEqual(viewport.index(of: 99), 1)
-        XCTAssertThrowsError(try viewport.resume([row("第102条", 0), row("第101条", 100), row("第100条", 200)], afterLeavingSelection: true))
+        try viewport.resume([row("第102条", 0), row("第101条", 100), row("第100条", 200)], afterLeavingSelection: true)
+        XCTAssertEqual(viewport.index(of: 100), 1)
+        XCTAssertThrowsError(try viewport.resume([row("无关消息", 0)], afterLeavingSelection: true))
     }
 
     func testSelectionModeChangeUsesOrderedContextAndRetainsDuplicateOccurrences() throws {
@@ -260,7 +323,7 @@ final class WeChatForwardTests: XCTestCase {
         XCTAssertEqual(try WeChatMessageContext.resolve(selected: selected, target: 2, normal: ["开始", "重复", "重复", "结束"]), 2)
         XCTAssertEqual(try WeChatMessageContext.resolve(selected: selected, target: 2, normal: ["更早", "开始", "重复", "重复", "结束"]), 3)
         XCTAssertThrowsError(try WeChatMessageContext.resolve(selected: selected, target: 2, normal: ["无关", "重复", "结束"]))
-        XCTAssertThrowsError(try WeChatMessageContext.resolve(selected: ["甲 图片", "甲 图片", "甲 图片"], target: 1, normal: ["图片", "图片", "图片", "图片"]))
+        XCTAssertEqual(try WeChatMessageContext.resolve(selected: ["甲 图片", "甲 图片", "甲 图片"], target: 1, normal: ["图片", "图片", "图片", "图片"]), 1)
     }
     func testNativeArchiveRejectsCorruptionTruncationAndCancellation() throws {
         var data = try XCTUnwrap(Data(base64Encoded: storedZIP))

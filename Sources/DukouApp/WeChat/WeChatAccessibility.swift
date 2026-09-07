@@ -443,7 +443,9 @@ final class WeChatAccessibility {
         let list: WCNode
         let rows: [WCNode]
         var signature: String {
-            "\(list.rect):\(list.children.count):" + rows.map { "\($0.role):\($0.rect):\($0.selected):\($0.strings)" }.joined(separator: "|")
+            // New messages can change the off-screen child count while this
+            // history viewport stays still. Only visible rows need to settle.
+            "\(list.rect):" + rows.map { "\($0.role):\($0.rect):\($0.selected):\($0.strings)" }.joined(separator: "|")
         }
         func canCheck(_ row: WCNode) -> Bool {
             list.rect.insetBy(dx: 0, dy: 5).contains(CGPoint(x: row.rect.minX + 22, y: row.rect.midY))
@@ -891,9 +893,10 @@ final class WeChatAccessibility {
                   stillSelecting || page.rows.allSatisfy({ $0.role == "AXStaticText" }) else { throw WeChatAutomationError.selection }
             // A sheet creates a new observation boundary. No cached AX message
             // handles survive it, and no search starts from an unknown position.
-            // External sharing in WeChat 4.1.13 exits multi-select. The viewport
-            // stays put, but checkbox descriptions lose their sender prefix.
-            // Confirm every row's content/order/geometry before rebinding.
+            // External sharing in WeChat 4.1.13 exits multi-select, and the
+            // sender prefix disappears. New arrivals may also add or push out
+            // visible rows. Reuse the remaining ordered context to continue
+            // from the saved boundary, not from the current newest message.
             do { try tracked.resume(page.data, afterLeavingSelection: !stillSelecting) } catch { throw WeChatAutomationError.selection }
             if !stillSelecting { ownsSelection = false }
             var budget = NavigationBudget(deadline: clock() + 15, maximumSteps: 60)
