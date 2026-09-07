@@ -5,39 +5,30 @@ import zlib
 /// helper. WeChat currently writes ordinary UTF-8, deflated ZIP entries. ZIP64,
 /// encryption and unknown compression methods fail closed.
 public enum WeChatNativeArchive {
-    /// Returns the authoritative native timestamps only after every ZIP entry
-    /// passes CRC and the transcript matches the actual checked messages.
-    public static func records(_ data: Data, selected: [WeChatSelectedMessage], checkCancellation: () throws -> Void = {}) throws -> [WeChatTranscriptRecord] {
-        try transcripts(data, checkCancellation: checkCancellation) { records, names in
-            records.count == selected.count && zip(selected, records).allSatisfy { $0.matches($1, attachmentNames: names) }
-        }
-    }
-
-    /// Native range selection already defines the intervening messages. Its
-    /// count and observed endpoints are checked independently of navigation.
-    public static func records(_ data: Data, count: Int, newest: WeChatSelectedMessage, oldest: WeChatSelectedMessage?, checkCancellation: () throws -> Void = {}) throws -> [WeChatTranscriptRecord] {
-        try transcripts(data, checkCancellation: checkCancellation) { records, names in
-            guard records.count == count, let first = records.first, let last = records.last,
-                  newest.matches(last, attachmentNames: names) else { return false }
-            return oldest?.matches(first, attachmentNames: names) ?? true
-        }
-    }
-
-    private static func transcripts(_ data: Data, checkCancellation: () throws -> Void, matchesSelection: ([WeChatTranscriptRecord], [String]) -> Bool) throws -> [WeChatTranscriptRecord] {
+    /// Checks the complete ZIP and estimates its message count when a native
+    /// TXT is recognizable. Bodies, card types, dates and the selected count
+    /// do not decide whether the original archive can be delivered.
+    ///
+    /// A future TXT format (or an attachment-only archive) has no estimate;
+    /// callers can report the number selected in WeChat instead. Multiple
+    /// recognizable TXT files use the largest count rather than summing
+    /// attached or duplicate transcripts.
+    public static func messageCount(_ data: Data, checkCancellation: () throws -> Void = {}) throws -> Int? {
+        try checkCancellation()
         let entries = try directory(data)
-        let attachments = entries.filter { !$0.name.hasSuffix("/") }.map { ($0.name as NSString).lastPathComponent }
-        var matches: [[WeChatTranscriptRecord]] = []
+        guard entries.contains(where: { !$0.name.hasSuffix("/") && $0.expanded > 0 }) else { throw WeChatReadError.invalidTranscript }
+        var count: Int?
         for entry in entries where !entry.name.hasSuffix("/") {
             try checkCancellation()
-            let isText = entry.name.lowercased().hasSuffix(".txt")
+            // Large TXT files still receive the same streaming CRC check.
+            // Estimating a count must not require collecting them in memory.
+            let isText = entry.name.lowercased().hasSuffix(".txt") && entry.expanded <= 16_777_216
             let body = try read(entry, from: data, collect: isText, checkCancellation: checkCancellation)
             guard isText, let text = String(data: body, encoding: .utf8), let records = try? WeChatTranscriptRecord.parse(text) else { continue }
-            let names = attachments.filter { $0 != (entry.name as NSString).lastPathComponent }
-            if matchesSelection(records, names),
-               zip(records, records.dropFirst()).allSatisfy({ $0.date <= $1.date }) { matches.append(records) }
+            count = max(count ?? 0, records.count)
         }
-        guard matches.count == 1, let records = matches.first else { throw WeChatReadError.transcriptMismatch }
-        return records
+        try checkCancellation()
+        return count
     }
 
     private struct Entry {

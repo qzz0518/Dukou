@@ -25,7 +25,7 @@ enum WeChatAutomationError: Error, LocalizedError {
         case .missingShare: L10n.text("没有找到「暂存到渡口」分享入口。请在设置的「入口」中启用它。")
         case .ambiguousReceipt: L10n.text("同时收到了多次分享，无法确认本次文件，已停止自动粘贴。")
         case .receiptTimeout: L10n.text("等待微信导出超时。已收到的文件会保留在暂存架。")
-        case .invalidArchive: L10n.text("微信导出的 ZIP 无法校验，文件已保留在暂存架。")
+        case .invalidArchive: L10n.text("微信导出的文件为空或无法完整读取，文件已保留。")
         case .timeRangeUnavailable: L10n.text("按时间选取暂未开放，请改用条数。")
         case .control(let label): L10n.format("微信没有显示“%@”。请回到普通聊天窗口后重试。", label)
         }
@@ -88,8 +88,6 @@ struct WeChatCapture: Sendable {
     /// Newest batch first. Delivery reverses this so attached ZIPs read forward.
     let directories: [URL]
     let messageCount: Int
-    /// Native boundary probes, retained locally but never pasted.
-    let checkpointDirectories: [URL]
     let readSeconds: Double
     let captureSeconds: Double
 }
@@ -135,8 +133,9 @@ final class WeChatAccessibility {
     private var scrollsByPhase: [String: Int] = [:]
     private var clickCount = 0
     private var exportCount = 0
+    private var receiptReadRetries = 0
     private var navigationKeys = 0
-    private var keyboardVerifiedMessages = 0
+    private var keyboardMessages = 0
     private var rangeClicks = 0
     private var shiftRangeClicks = 0
     private var locator = ""
@@ -517,12 +516,12 @@ final class WeChatAccessibility {
         throw WeChatAutomationError.loading
     }
 
-    private func checkedMessage(_ node: WCNode) throws -> WeChatSelectedMessage {
+    private func checkedMessage(_ node: WCNode) throws -> String {
         guard node.role == "AXCheckBox", let label = node.strings.first else { throw WeChatAutomationError.selection }
-        return WeChatSelectedMessage(description: label)
+        return label.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func beginSelection(at node: WCNode, viewport: CGRect) throws -> (WeChatSelectedMessage, Page) {
+    private func beginSelection(at node: WCNode, viewport: CGRect) throws -> (String, Page) {
         phase = "select-anchor-menu"
         // A tall bubble's centre can be inside a quoted-message preview. Its
         // context menu then targets the quote. Click the main body near its top.
@@ -551,10 +550,7 @@ final class WeChatAccessibility {
 
     private struct Selection {
         let count: Int
-        let newest: WeChatSelectedMessage
-        let oldest: WeChatSelectedMessage?
         let checkpoint: Checkpoint
-        var messages: [WeChatSelectedMessage]? = nil
     }
     private struct Checkpoint {
         let viewport: WeChatViewport
@@ -614,7 +610,7 @@ final class WeChatAccessibility {
     }
 
     private func leaveSelection(page: Page, index: Int) throws -> (WCNode, CGRect) {
-        let context = try page.rows.map { try checkedMessage($0).description }
+        let context = try page.rows.map { try checkedMessage($0) }
         try restoreSelection()
         let normal = try stablePage()
         let rebound: Int
@@ -798,8 +794,8 @@ final class WeChatAccessibility {
     /// Walk native row focus, not pixels. One Up crosses even a screen-height
     /// bubble; non-message rows (timestamps/system notices) are not counted.
     /// Wait only until that particular key has changed focus, never a fixed
-    /// gesture delay. Every visited message is independently checked in ZIP.
-    private func keyboardRange(from start: Page, limit: Int) throws -> (Page, WeChatViewport, [WeChatSelectedMessage])? {
+    /// gesture delay. Count message rows without interpreting their contents.
+    private func keyboardRange(from start: Page, limit: Int) throws -> (Page, WeChatViewport)? {
         guard try focusList(start), var first = focusedNode() else { return nil }
         steps.append(["kind": "keyboard-setup", "focusID": first.id, "role": first.role,
                       "selected": first.selected,
@@ -830,12 +826,12 @@ final class WeChatAccessibility {
         guard first.selected, first.id == "chat_bubble_item_view", first.role == "AXCheckBox" else { return nil }
         phase = "keyboard-range"
         var previous = first
-        var messages = [try checkedMessage(first)]
+        var count = 1
         let deadline = clock() + 35
         var keys = 0
-        while messages.count < limit {
+        while count < limit {
             guard clock() < deadline, keys < 600 else { throw WeChatAutomationError.selection }
-            try navigationKey(126) // Up
+            try navigationKey(126)
             keys += 1
             let changedDeadline = min(deadline, clock() + 2)
             var moved: WCNode?
@@ -851,7 +847,7 @@ final class WeChatAccessibility {
                 // AX focus support does not imply Up support. Only a first
                 // key that left the entire anchor viewport unchanged can
                 // fall back; partial traversal must not silently restart.
-                if messages.count == 1 {
+                if count == 1 {
                     let fresh = try stablePage()
                     if fresh.signature == start.signature { return nil }
                 }
@@ -861,7 +857,7 @@ final class WeChatAccessibility {
                   (wcAttribute(list, "AXChildren") as? [AXUIElement] ?? []).contains(where: { CFEqual($0, next.element) }) else { throw WeChatAutomationError.focusChanged }
             if next.id == "chat_bubble_item_view" {
                 guard next.role == "AXCheckBox", !next.selected else { throw WeChatAutomationError.selection }
-                messages.append(try checkedMessage(next))
+                count += 1
             } else {
                 guard next.role == "AXStaticText" else { throw WeChatAutomationError.selection }
             }
@@ -870,14 +866,15 @@ final class WeChatAccessibility {
         let page = try stablePage()
         phase = "keyboard-arrived"
         observe("keyboard-arrived", page)
-        steps.append(["kind": "keyboard", "messages": messages.count, "keys": keys,
+        steps.append(["kind": "keyboard", "messages": count, "keys": keys,
                       "focusIndex": page.rows.firstIndex(where: { CFEqual($0.element, previous.element) }) ?? -1,
                       "labelMatch": page.rows.contains(where: { $0.strings == previous.strings }),
                       "focusedY": previous.rect.minY, "focusedHeight": previous.rect.height])
         guard let index = page.rows.firstIndex(where: { CFEqual($0.element, previous.element) }),
               page.rows[index].strings == previous.strings else { throw WeChatAutomationError.selection }
         let tracked = WeChatViewport(rows: page.data, anchorIndex: index, anchorOrdinal: limit - 1)
-        return (page, tracked, messages.reversed())
+        keyboardMessages += count
+        return (page, tracked)
     }
 
     private func selectBatch(limit: Int, start: SelectionStart, latestPage: Page? = nil) throws -> Selection {
@@ -945,21 +942,21 @@ final class WeChatAccessibility {
         phase = "select-range"
         // Every batch needs the exact first visible message before pressing
         // the range button. Track overlapping content and measured motion,
-        // never AX child indices; the exported count is an independent check.
+        // never AX child indices. The ZIP itself supplies all message content.
         var page = selectedPage
         guard let index = page.rows.firstIndex(where: \.selected) else { throw WeChatAutomationError.selection }
         var tracked = WeChatViewport(rows: page.data, anchorIndex: index)
-        if limit == 1 { return Selection(count: 1, newest: newest, oldest: newest, checkpoint: try checkpoint(tracked, page: page)) }
-        var observedMessages: [WeChatSelectedMessage]?
-        if let (arrived, positioned, messages) = try keyboardRange(from: page, limit: limit) {
-            page = arrived; tracked = positioned; observedMessages = messages
+        if limit == 1 { return Selection(count: 1, checkpoint: try checkpoint(tracked, page: page)) }
+        var usedKeyboard = false
+        if let (arrived, positioned) = try keyboardRange(from: page, limit: limit) {
+            page = arrived; tracked = positioned; usedKeyboard = true
         } else {
             // Setting AXFocused may itself scroll in another Qt version.
             // Rebind before using the wheel fallback's initial ordinal.
             page = try stablePage()
             let selected = page.rows.indices.filter { page.rows[$0].selected }
             guard selected.count == 1, let anchor = selected.first,
-                  try checkedMessage(page.rows[anchor]).description == newest.description else { throw WeChatAutomationError.selection }
+                  try checkedMessage(page.rows[anchor]) == newest else { throw WeChatAutomationError.selection }
             tracked = WeChatViewport(rows: page.data, anchorIndex: anchor)
         }
         phase = "select-range"
@@ -982,22 +979,20 @@ final class WeChatAccessibility {
                 // the visible interval in one action, including quoted rows.
                 if unchanged > 0, limit < 100, let newestIndex = tracked.index(of: 0),
                    target < newestIndex, page.canCheck(row), page.canCheck(page.rows[newestIndex]) {
-                    let oldest = try checkedMessage(row)
                     try click(CGPoint(x: row.rect.minX + 22, y: row.rect.midY), modifiers: .maskShift)
                     shiftRangeClicks += 1
                     page = try stablePage()
                     observe("after-shift-range", page)
                     do { try tracked.resume(page.data) } catch { throw WeChatAutomationError.selection }
                     guard page.rows.indices.filter({ page.rows[$0].selected }) == Array(target...newestIndex) else { throw WeChatAutomationError.selection }
-                    return Selection(count: limit, newest: newest, oldest: oldest, checkpoint: try checkpoint(tracked, page: page), messages: observedMessages)
+                    return Selection(count: limit, checkpoint: try checkpoint(tracked, page: page))
                 }
                 // Qt's range button excludes a row flush against its top
                 // edge. Native Up aligns exactly there; give it the same
                 // small inset as the wheel locator before pressing range.
                 if tracked.canSelectRange(endingAt: limit - 1, listTop: page.list.rect.minY,
-                                          listHeight: page.list.rect.height, keyboardVerified: observedMessages != nil),
+                                          listHeight: page.list.rect.height, keyboardVerified: usedKeyboard),
                    let button = try rangeControl(), button.strings.contains("选择到这里") {
-                    let oldest = try checkedMessage(row)
                     observe("before-range", page)
                     try press(button)
                     rangeClicks += 1
@@ -1005,7 +1000,7 @@ final class WeChatAccessibility {
                     observe("after-range", page)
                     do { try tracked.resume(page.data) } catch { throw WeChatAutomationError.selection }
                     guard let endpoint = tracked.index(of: limit - 1), page.rows[endpoint].selected else { throw WeChatAutomationError.selection }
-                    return Selection(count: limit, newest: newest, oldest: oldest, checkpoint: try checkpoint(tracked, page: page), messages: observedMessages)
+                    return Selection(count: limit, checkpoint: try checkpoint(tracked, page: page))
                 }
                 let distance = page.list.rect.minY + 8 - row.rect.minY
                 let amount = Int((distance / max(1, gain)).rounded())
@@ -1178,12 +1173,31 @@ final class WeChatAccessibility {
         return CGPoint(x: crop.minX + match.boundingBox.midX * crop.width, y: crop.minY + (1 - match.boundingBox.midY) * crop.height)
     }
 
+    private func readyIDs(at ready: URL) throws -> Set<String> {
+        var retries = 0
+        while true {
+            try check()
+            do {
+                return Set(try FileManager.default.contentsOfDirectory(at: ready, includingPropertiesForKeys: nil).map(\.lastPathComponent).filter { UUID(uuidString: $0) != nil })
+            } catch {
+                let cocoa = error as NSError
+                let causes = [cocoa, cocoa.userInfo[NSUnderlyingErrorKey] as? NSError].compactMap { $0 }
+                // Foundation can wrap readdir's EINTR in NSFileReadUnknownError.
+                // Retrying this read does not repeat any sharing UI action.
+                guard retries < 3, causes.contains(where: { $0.domain == NSPOSIXErrorDomain && $0.code == Int(EINTR) }) else { throw error }
+                retries += 1
+                receiptReadRetries += 1
+                try pause(0.002)
+            }
+        }
+    }
+
     private func nativeExport(ready: URL, shelfExtension: URL) throws -> URL {
         phase = "export"
         let exportStarted = clock()
         defer { exportSeconds += clock() - exportStarted }
         func ids() throws -> Set<String> {
-            Set(try FileManager.default.contentsOfDirectory(at: ready, includingPropertiesForKeys: nil).map(\.lastPathComponent).filter { UUID(uuidString: $0) != nil })
+            try readyIDs(at: ready)
         }
         let baseline = try ids()
         let installed = Bundle(url: shelfExtension)
@@ -1258,10 +1272,10 @@ final class WeChatAccessibility {
     }
 
     private func diagnostics(started: Double, outcome: String, count: Int) {
-        let report: [String: Any] = ["schemaVersion": 4, "strategy": "native-keyboard-range", "at": ISO8601DateFormatter().string(from: Date()),
+        let report: [String: Any] = ["schemaVersion": 5, "strategy": "native-keyboard-range", "at": ISO8601DateFormatter().string(from: Date()),
             "outcome": outcome, "phase": phase, "seconds": clock() - started, "messageCount": count,
-            "navigationKeys": navigationKeys, "keyboardVerifiedMessages": keyboardVerifiedMessages, "scrolls": scrollCount, "scrollSeconds": scrollSeconds, "scanSeconds": scanSeconds, "scanCalls": scanCalls, "stableSeconds": stableSeconds, "exportSeconds": exportSeconds, "prefetchSeconds": prefetchSeconds, "prefetchRows": prefetchRows, "prefetchLoaded": prefetchLoaded, "scrollsByPhase": scrollsByPhase, "steps": steps, "clicks": clickCount, "rangeClicks": rangeClicks, "shiftRangeClicks": shiftRangeClicks, "exports": exportCount, "resumedBatches": resumedBatches,
-            "snapshots": snapshots,
+            "navigationKeys": navigationKeys, "keyboardMessages": keyboardMessages, "scrolls": scrollCount, "scrollSeconds": scrollSeconds, "scanSeconds": scanSeconds, "scanCalls": scanCalls, "stableSeconds": stableSeconds, "exportSeconds": exportSeconds, "prefetchSeconds": prefetchSeconds, "prefetchRows": prefetchRows, "prefetchLoaded": prefetchLoaded, "scrollsByPhase": scrollsByPhase, "steps": steps, "clicks": clickCount, "rangeClicks": rangeClicks, "shiftRangeClicks": shiftRangeClicks, "exports": exportCount, "resumedBatches": resumedBatches,
+            "snapshots": snapshots, "receiptReadRetries": receiptReadRetries,
             "locator": locator, "visualMilliseconds": visualMilliseconds, "lastNodeCount": lastNodeCount,
             "scanTruncated": scanTruncated, "controlFailure": controlFailure ?? [:],
             "wechatVersion": app.bundleURL.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String } ?? "unknown"]
@@ -1275,8 +1289,8 @@ final class WeChatAccessibility {
     func capture(range: WeChatForwardRange, ready: URL, shelfExtension: URL) throws -> WeChatCapture {
         guard range.unit == .messages else { throw WeChatAutomationError.timeRangeUnavailable }
         guard range.isValid else { throw WeChatAutomationError.selection }
-        let started = clock(), end = Date()
-        var count = 0, outcome = "failed"
+        let started = clock()
+        var count = 0, selectedCount = 0, outcome = "failed"
         defer { cleanup(); diagnostics(started: started, outcome: outcome, count: count) }
         progress(L10n.text("正在打开微信群聊…"))
         try openChat()
@@ -1286,52 +1300,27 @@ final class WeChatAccessibility {
         let latestPage: Page?
         if range.value > WeChatPrefetch.threshold { latestPage = try prefetchHistory(target: range.value) }
         else { latestPage = nil }
-        var directories: [URL] = [], checkpoints: [URL] = []
+        var directories: [URL] = []
         var start = SelectionStart.latest
-        var oldestDate: Date?
-        var examined = 0
-        let cutoff = range.start(at: end)
-        while examined < 2000 {
+        while selectedCount < range.value {
             try verifyChat()
-            let limit = range.unit == .messages ? min(100, range.value - count) : 100
-            progress(L10n.format("正在选择并导出消息 · 已完成 %d 条", count))
-            var selected = try selectBatch(limit: limit, start: start, latestPage: count == 0 ? latestPage : nil)
+            let limit = min(100, range.value - selectedCount)
+            progress(L10n.format("正在选择并导出消息 · 已完成约 %d 条", count))
+            let selected = try selectBatch(limit: limit, start: start, latestPage: selectedCount == 0 ? latestPage : nil)
+            let directory = try nativeExport(ready: ready, shelfExtension: shelfExtension)
             start = .resume(selected.checkpoint, ordinal: selected.count)
-            var included = selected.count
-            var directory = try nativeExport(ready: ready, shelfExtension: shelfExtension)
-            phase = "verify"
-            let records: [WeChatTranscriptRecord]
-            if let messages = selected.messages {
-                records = try WeChatArchive.records(directory: directory, selected: messages, cancellation: cancellation)
-                keyboardVerifiedMessages += messages.count
-            }
-            else { records = try WeChatArchive.records(directory: directory, count: selected.count, newest: selected.newest, oldest: selected.oldest, cancellation: cancellation) }
-            if let oldestDate, let last = records.last, last.date > oldestDate { throw WeChatReadError.transcriptMismatch }
-            oldestDate = records.first?.date
-            examined += selected.count
-            var finished = range.unit == .messages && count + selected.count == range.value
-            if cutoff != nil {
-                let excluded = try range.excludedPrefix(in: records, at: end)
-                if excluded > 0 {
-                    finished = true
-                    checkpoints.append(directory)
-                    if excluded == selected.count { included = 0 }
-                    else {
-                        included = selected.count - excluded
-                        selected = try selectBatch(limit: included, start: .resume(selected.checkpoint, ordinal: 0))
-                        directory = try nativeExport(ready: ready, shelfExtension: shelfExtension)
-                        phase = "verify-boundary"
-                        let trimmed = try WeChatArchive.records(directory: directory, count: selected.count, newest: selected.newest, oldest: selected.oldest, cancellation: cancellation)
-                        guard trimmed == Array(records.dropFirst(excluded)) else { throw WeChatReadError.transcriptMismatch }
-                    }
-                }
-            }
-            if included > 0 { directories.append(directory); count += included }
-            if finished {
-                phase = "complete"; outcome = "verified"
-                return WeChatCapture(directories: directories, messageCount: count, checkpointDirectories: checkpoints, readSeconds: 0, captureSeconds: clock() - started)
-            }
+            phase = "archive"
+            let exportedCount = try WeChatArchive.messageCount(directory: directory, cancellation: cancellation)
+            steps.append(["kind": "archive", "selected": selected.count,
+                          "messages": exportedCount ?? selected.count, "estimated": exportedCount == nil])
+            directories.append(directory)
+            // Selection controls navigation and when to stop. Parsed counts
+            // only describe the exported payload, so small differences never
+            // trigger extra selection, retries or a discarded native ZIP.
+            selectedCount += selected.count
+            count += exportedCount ?? selected.count
         }
-        throw WeChatAutomationError.historyIncomplete
+        phase = "complete"; outcome = "exported"
+        return WeChatCapture(directories: directories, messageCount: count, readSeconds: 0, captureSeconds: clock() - started)
     }
 }

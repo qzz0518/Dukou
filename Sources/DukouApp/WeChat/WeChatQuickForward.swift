@@ -181,13 +181,6 @@ final class WeChatQuickForward: ObservableObject {
             }
             try token.check()
             let reader = InboxReader(inbox: inbox)
-            // A boundary probe may include older messages. Keep that original
-            // receipt in local history, but neither paste nor shelve it after
-            // the narrower native ZIP has been verified.
-            for directory in capture.checkpointDirectories {
-                guard let batch = reader.batch(at: directory) else { throw WeChatAutomationError.invalidArchive }
-                try reader.markConsumed(itemIDs: Set(batch.items.map(\.id)), in: batch.id)
-            }
             guard capture.messageCount > 0 else {
                 status = L10n.text("这个时间范围内没有消息。")
                 return
@@ -216,7 +209,7 @@ final class WeChatQuickForward: ObservableObject {
             recent = stored.recent
             draft = stored.draft
             persist()
-            status = L10n.format("已向 %@ 粘贴 %d 个 ZIP · %d 条消息", preset.targetName, urls.count, capture.messageCount)
+            status = L10n.format("已向 %@ 粘贴 %d 个 ZIP · 约 %d 条消息", preset.targetName, urls.count, capture.messageCount)
             if !savedOutcome { error = L10n.text("粘贴已完成，但部分记录状态未能保存。") }
         } catch is CancellationError {
             status = L10n.text("已取消，已收到的文件保留在暂存架。")

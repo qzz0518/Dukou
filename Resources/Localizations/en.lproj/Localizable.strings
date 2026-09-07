@@ -202,13 +202,12 @@
 "同时收到了多次分享，无法确认本次文件，已停止自动粘贴。" = "Multiple shares arrived together. Automatic paste stopped because the files could not be attributed.";
 "完成前请不要动鼠标和键盘" = "Hands off the mouse and keyboard until this finishes.";
 "天" = "days";
-"导出记录与所选消息不一致，已停止自动粘贴，文件已保留。" = "The export does not match the selected messages. Automatic paste stopped; the files were kept.";
+"未能继续定位微信消息，已收到的文件会保留在暂存架。" = "Could not continue locating WeChat messages. Received files remain on the shelf.";
 "小时" = "hours";
 "已取消，已收到的文件保留在暂存架。" = "Cancelled. Files already received remain on the shelf.";
-"已向 %@ 粘贴 %d 个 ZIP · %d 条消息" = "Pasted into %@ · %d ZIPs · %d messages";
+"已向 %@ 粘贴 %d 个 ZIP · 约 %d 条消息" = "Pasted into %@ · %d ZIPs · about %d messages";
 "开启权限" = "Enable access";
 "开始转发" = "Start forwarding";
-"微信导出的 ZIP 无法校验，文件已保留在暂存架。" = "The WeChat ZIP could not be verified. The files remain on the shelf.";
 "微信没有显示“%@”。请回到普通聊天窗口后重试。" = "WeChat did not show “%@”. Return to the normal chat window and retry.";
 "微信群名称" = "WeChat group name";
 "微信转发需要辅助功能权限。" = "WeChat forwarding needs Accessibility access.";
@@ -219,7 +218,7 @@
 "执行期间 Dukou 会自己操作微信，请不要碰鼠标和键盘。" = "Dukou drives WeChat by itself while this runs. Keep your hands off the mouse and keyboard.";
 "按最新消息向前选取，每个 ZIP 最多 100 条；一次任务最多 2,000 条。" = "Select the latest messages, with up to 100 per ZIP and 2,000 per task.";
 "无法准确选中这一批消息，已停止。请缩小范围后重试。" = "This batch could not be selected accurately. Try a smaller range.";
-"无法识别微信导出的聊天记录格式，文件已保留。" = "The WeChat export format was not recognized. The files were kept.";
+"微信导出的文件为空或无法完整读取，文件已保留。" = "The WeChat export is empty or could not be read completely. The files were kept.";
 "最近" = "Last";
 "最近 %d 天" = "Last %d days";
 "最近 %d 小时" = "Last %d hours";
@@ -257,7 +256,7 @@
 "微信消息列表尚未稳定。请等待加载完成后重试。" = "The WeChat message list has not settled. Wait for loading to finish, then try again.";
 "正在加载更早的聊天记录 · 已加载 %d 条" = "Loading earlier messages · %d loaded";
 "正在加载更早的聊天记录…" = "Loading earlier chat messages…";
-"正在选择并导出消息 · 已完成 %d 条" = "Selecting and exporting messages · %d complete";
+"正在选择并导出消息 · 已完成约 %d 条" = "Selecting and exporting messages · about %d complete";
 "没有定位到“转发到其他应用”按钮，已停止。请保持微信转发窗口完整可见。" = "Could not locate Forward to Other Apps. Keep the entire WeChat forward window visible and try again.";
 "这个转发界面需要识别按钮位置。请在系统设置中为渡口开启屏幕录制权限后重试。" = "This forward layout needs visual button recognition. Enable Screen Recording for Dukou in System Settings and try again.";
 "按时间选取暂未开放，请改用条数。" = "Time ranges are not available yet. Select a message count instead.";

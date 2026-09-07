@@ -2,12 +2,16 @@ import DukouCore
 import Foundation
 
 enum WeChatArchive {
-    static func records(directory: URL, selected: [WeChatSelectedMessage], cancellation: WeChatCancellation) throws -> [WeChatTranscriptRecord] {
-        try WeChatNativeArchive.records(data(directory: directory), selected: selected, checkCancellation: cancellation.check)
-    }
-
-    static func records(directory: URL, count: Int, newest: WeChatSelectedMessage, oldest: WeChatSelectedMessage?, cancellation: WeChatCancellation) throws -> [WeChatTranscriptRecord] {
-        try WeChatNativeArchive.records(data(directory: directory), count: count, newest: newest, oldest: oldest, checkCancellation: cancellation.check)
+    /// The native ZIP is the payload. Text parsing only supplies a display
+    /// count; it must not decide whether a message format can be delivered.
+    static func messageCount(directory: URL, cancellation: WeChatCancellation) throws -> Int? {
+        do {
+            return try WeChatNativeArchive.messageCount(data(directory: directory), checkCancellation: cancellation.check)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw WeChatAutomationError.invalidArchive
+        }
     }
 
     private static func data(directory: URL) throws -> Data {
