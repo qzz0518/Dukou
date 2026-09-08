@@ -53,6 +53,10 @@ run = "REQUIRE_CLEAN=0 REQUIRE_TAG=0 NOTARIZE=0 GENERATE_APPCAST=0 Scripts/relea
 description = "Build, notarize, staple and sign the tagged release feed"
 run = "Scripts/release.sh"
 
+[tasks.update-tap]
+description = "Point the Homebrew cask at the published GitHub Release"
+run = "Scripts/update-tap.sh"
+
 [tasks.release-config]
 description = "Validate bundle identifiers, app group, entitlements (app unsandboxed, extensions sandboxed), the five entries and the Sparkle feed, without reading any secret"
 run = "Scripts/check-release-config.sh"

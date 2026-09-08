@@ -135,3 +135,4 @@ echo "checksum: $DMG.sha256"
 if [ -f "$UPDATES_DIR/appcast.xml" ]; then
 	echo "signed appcast: $UPDATES_DIR/appcast.xml — copy it to site/ and commit to publish"
 fi
+echo "homebrew cask: run Scripts/update-tap.sh once the GitHub Release exists"
