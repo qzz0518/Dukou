@@ -23,6 +23,7 @@ public enum PromptSurface: Sendable {
     case forward
     /// 快捷微信转发.
     case wechat
+    case moments
 }
 
 /// The prompt library and how it is used. Persisted as one JSON blob.
@@ -35,17 +36,20 @@ public struct PromptSettings: Codable, Hashable, Sendable {
     public var selectedID: UUID?
     public var attachToForwards: Bool
     public var attachToWeChat: Bool
+    public var attachToMoments: Bool
 
     public init(
         prompts: [AttachedPrompt],
         selectedID: UUID? = nil,
         attachToForwards: Bool = false,
-        attachToWeChat: Bool = false
+        attachToWeChat: Bool = false,
+        attachToMoments: Bool = false
     ) {
         self.prompts = prompts
         self.selectedID = selectedID
         self.attachToForwards = attachToForwards
         self.attachToWeChat = attachToWeChat
+        self.attachToMoments = attachToMoments
         normalize()
     }
 
@@ -67,6 +71,7 @@ public struct PromptSettings: Codable, Hashable, Sendable {
         selectedID = try container.decodeIfPresent(UUID.self, forKey: .selectedID)
         attachToForwards = try container.decodeIfPresent(Bool.self, forKey: .attachToForwards) ?? false
         attachToWeChat = try container.decodeIfPresent(Bool.self, forKey: .attachToWeChat) ?? false
+        attachToMoments = try container.decodeIfPresent(Bool.self, forKey: .attachToMoments) ?? false
         normalize()
     }
 
@@ -83,6 +88,7 @@ public struct PromptSettings: Codable, Hashable, Sendable {
         switch surface {
         case .forward: enabled = attachToForwards
         case .wechat: enabled = attachToWeChat
+        case .moments: enabled = attachToMoments
         }
         guard enabled, let prompt = selected else { return nil }
         let text = prompt.text.trimmingCharacters(in: .whitespacesAndNewlines)

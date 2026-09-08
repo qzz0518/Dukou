@@ -11,7 +11,7 @@ struct WeChatPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
-            Text(L10n.text("选择微信群和消息范围，自动合并为微信原生 ZIP，粘贴到你正在使用的应用。"))
+            Text(L10n.text("选择微信群和消息范围，导出微信原生 ZIP，粘贴到应用或保存到文件夹。"))
                 .font(Typo.paneCaption).foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -34,7 +34,7 @@ struct WeChatPane: View {
                     TextField(L10n.text("范围数量"), text: $amount)
                         .textFieldStyle(SettingsTextFieldStyle(numeric: true, invalid: !forward.draft.range.isValid))
                         .multilineTextAlignment(.center)
-                        .frame(width: 64)
+                        .frame(width: min(176, max(64, CGFloat(amount.count) * 8 + 24)))
                         .accessibilityIdentifier("wechat.amount")
                         .disabled(forward.draft.range.unit != .messages)
                         .onChange(of: amount) { _, typed in
@@ -43,10 +43,15 @@ struct WeChatPane: View {
                             forward.setAmount(digits)
                         }
                         .onChange(of: forward.draft.range.unit) { _, _ in
-                            // 改用条数 sets the count from outside the field.
-                            // Only that: following the count itself would let
-                            // this fight the digits being typed into it.
+                            // Switching a legacy time preset to messages replaces
+                            // the amount from outside the field.
                             amount = forward.amountText
+                        }
+                        .onChange(of: forward.draft.range.value) { _, value in
+                            // A remembered preset can replace the count without
+                            // changing units. Preserve empty or overflowing text
+                            // while editing; both already map to the invalid zero.
+                            if (Int(amount) ?? 0) != value { amount = forward.amountText }
                         }
                         .onAppear { amount = forward.amountText }
                     Text(forward.draft.range.unit.title)
@@ -57,52 +62,54 @@ struct WeChatPane: View {
                             .buttonStyle(SettingsActionButtonStyle())
                             .accessibilityIdentifier("wechat.useMessageCount")
                     }
-                    Spacer(minLength: 0)
+                    Spacer(minLength: Space.s)
+                    if let estimate = forward.draft.range.estimatedTimeTitle {
+                        Text(estimate)
+                            .font(Typo.paneCaption.monospacedDigit()).foregroundStyle(Theme.inkSecondary)
+                            .multilineTextAlignment(.trailing)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("wechat.estimate")
+                    }
                 }
-                Text(forward.draft.range.unit == .messages
-                     ? L10n.text("按最新消息向前选取，每个 ZIP 最多 100 条；一次任务最多 2,000 条。")
-                     : L10n.text("按时间选取暂未开放，请改用条数。"))
-                    .font(Typo.paneCaption).foregroundStyle(Theme.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if forward.draft.range.unit != .messages {
+                    Text(L10n.text("按时间选取暂未开放，请改用条数。"))
+                        .font(Typo.paneCaption).foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if !forward.draft.range.isValid {
-                    Text(L10n.format("请输入 1–%d 之间的整数。", forward.draft.range.unit.maximum))
+                    Text(rangeValidationMessage)
                         .font(Typo.paneCaption).foregroundStyle(Theme.danger)
                 }
             }.disabled(forward.isBusy)
 
-            SettingsSection(title: L10n.text("粘贴到"), systemImage: "arrow.up.forward.app", spacing: Space.m) {
-                HStack(spacing: Space.s) {
-                    SettingsSelect(
-                        title: L10n.text("正在运行的应用"),
-                        selection: Binding(get: { forward.draft.targetBundleIdentifier }, set: { forward.chooseTarget($0) }),
-                        choices: forward.applications.map { .init(id: $0.id, title: $0.name, image: $0.icon) },
-                        identifier: "wechat.target",
-                        placeholder: forward.draft.targetName.isEmpty
-                            ? L10n.text("选择正在运行的应用")
-                            : L10n.format("%@（未运行）", forward.draft.targetName)
-                    )
-                    Button { forward.refreshApplications() } label: { Image(systemName: "arrow.clockwise") }
-                        .buttonStyle(IconButtonStyle(size: SettingsControlMetrics.height, staticFeedback: true))
-                        .help(L10n.text("刷新运行中的应用"))
-                        .accessibilityLabel(Text(L10n.text("刷新运行中的应用")))
-                        .accessibilityIdentifier("wechat.refresh")
-                }
-                SettingsChoiceStrip(
-                    title: L10n.text("粘贴方式"), selection: $forward.draft.pastePath,
-                    choices: [
-                        .init(id: false, title: L10n.text("粘贴文件"), symbol: "doc"),
-                        .init(id: true, title: L10n.text("粘贴路径"), symbol: "link"),
-                    ]
+            SettingsSection(title: L10n.text("转发到"), systemImage: "arrow.up.forward.app", spacing: Space.m) {
+                QuickForwardDestinationPicker(
+                    targetBundleIdentifier: forward.draft.targetBundleIdentifier,
+                    targetName: forward.draft.targetName,
+                    folder: forward.draft.destinationFolder,
+                    applications: forward.applications,
+                    pastePath: $forward.draft.pastePath,
+                    onChooseApplication: forward.chooseTarget,
+                    onChooseFolder: forward.chooseFolder,
+                    onRefresh: forward.refreshApplications,
+                    identifierPrefix: "wechat"
                 )
-                .accessibilityIdentifier("wechat.pasteMode")
-                Text(L10n.text("请先在目标应用中点选输入框，确认接收后会记住这次配置。"))
-                    .font(Typo.paneCaption).foregroundStyle(Theme.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Toggle(L10n.text("合并为一个 ZIP"), isOn: $forward.draft.mergeArchives)
+                    .toggleStyle(SettingsOptionToggleStyle(symbol: "archivebox"))
+                    .accessibilityIdentifier("wechat.mergeArchives")
+                if forward.draft.recommendsMergingArchives {
+                    Label(L10n.text("消息较多，建议合并以减少附件数量。"), systemImage: "lightbulb")
+                        .font(Typo.paneCaption).foregroundStyle(Theme.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("wechat.mergeRecommendation")
+                }
             }.disabled(forward.isBusy)
 
-            SettingsSection(title: L10n.text("附加 Prompt"), systemImage: "text.quote", spacing: Space.m) {
-                PromptSettingsView(preferences: preferences, surface: .wechat)
-            }.disabled(forward.isBusy)
+            if forward.draft.destinationFolder == nil {
+                SettingsSection(title: L10n.text("附加 Prompt"), systemImage: "text.quote", spacing: Space.m) {
+                    PromptSettingsView(preferences: preferences, surface: .wechat, compact: true)
+                }.disabled(forward.isBusy)
+            }
 
             if !authorization.isTrusted {
                 Notice(text: L10n.text("微信转发需要辅助功能权限。"), tone: .warn) {
@@ -110,39 +117,16 @@ struct WeChatPane: View {
                 }
             }
             if let error = forward.error { Notice(error, tone: .bad) }
-            HStack(alignment: .center, spacing: Space.l) {
-                if let status = forward.status {
-                    HStack(alignment: .top, spacing: Space.s) {
-                        if forward.isBusy { ProgressView().controlSize(.small) }
-                        VStack(alignment: .leading, spacing: Space.xs) {
-                            Text(status).font(Typo.paneCaption).foregroundStyle(Theme.inkSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .accessibilityIdentifier("wechat.status")
-                            if let elapsed = forward.elapsedSeconds, !forward.isBusy {
-                                Text(L10n.format("%.1f 秒", elapsed)).font(Typo.paneCaption.monospacedDigit()).foregroundStyle(Theme.inkSecondary)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Spacer(minLength: 0)
-                }
-                if forward.isBusy {
-                    Button(L10n.text("取消")) { forward.cancel() }.buttonStyle(SettingsActionButtonStyle())
-                        .fixedSize()
-                        .accessibilityIdentifier("wechat.cancel")
-                } else {
-                    Button(L10n.text("开始转发")) { forward.start() }.buttonStyle(SettingsActionButtonStyle(primary: true))
-                        .fixedSize()
-                        .disabled(!forward.canRun)
-                        .accessibilityIdentifier("wechat.run")
-                }
-            }
-            // Standing, not only while a run is up: the one thing to know
-            // before pressing 开始转发 is that the pointer stops being yours.
-            Text(L10n.text("执行期间 Dukou 会自己操作微信，请不要碰鼠标和键盘。"))
-                .font(Typo.paneCaption).foregroundStyle(Theme.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+            QuickForwardFooter(
+                isBusy: forward.isBusy,
+                canRun: forward.canRun,
+                savesToFolder: forward.draft.destinationFolder != nil,
+                status: forward.status,
+                elapsedSeconds: forward.elapsedSeconds,
+                identifierPrefix: "wechat",
+                onStart: { forward.start() },
+                onCancel: { forward.cancel() }
+            )
             if !forward.recent.isEmpty {
                 SettingsSection(title: L10n.text("记住的群聊"), systemImage: "clock.arrow.circlepath", spacing: Space.m) {
                     ForEach(forward.recent) { preset in
@@ -151,7 +135,8 @@ struct WeChatPane: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(preset.chat).font(Typo.rowTitle).foregroundStyle(Theme.ink)
                                         .lineLimit(1).truncationMode(.middle)
-                                    Text(preset.range.title + " · " + preset.targetName + " · " + (preset.pastePath ? L10n.text("粘贴路径") : L10n.text("粘贴文件")))
+                                    Text(preset.range.title + " · " + (preset.destinationFolder?.path ?? preset.targetName) + " · " +
+                                         (preset.destinationFolder != nil ? L10n.text("保存文件") : (preset.pastePath ? L10n.text("粘贴路径") : L10n.text("粘贴文件"))))
                                         .font(Typo.paneCaption).foregroundStyle(Theme.inkSecondary)
                                         .lineLimit(1).truncationMode(.middle)
                                 }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
@@ -168,5 +153,14 @@ struct WeChatPane: View {
             }
         }
         .onAppear { forward.refreshApplications() }
+    }
+
+    private var rangeValidationMessage: String {
+        guard forward.draft.range.unit == .messages else {
+            return L10n.format("请输入 1–%d 之间的整数。", forward.draft.range.unit.maximum)
+        }
+        return !amount.isEmpty && Int(amount) == nil
+            ? L10n.text("条数过大，请输入更小的数字。")
+            : L10n.text("请输入大于 0 的整数。")
     }
 }

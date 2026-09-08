@@ -29,10 +29,63 @@ final class WeChatForwardTests: XCTestCase {
     }
 
     func testCountRangeValidation() {
-        XCTAssertTrue(WeChatForwardRange(unit: .messages, value: 2000).isValid)
-        XCTAssertFalse(WeChatForwardRange(unit: .messages, value: 0).isValid)
-        XCTAssertFalse(WeChatForwardRange(unit: .messages, value: 2001).isValid)
+        for count in [1, 2000, 2001, 1_000_000, Int.max] {
+            let range = WeChatForwardRange(unit: .messages, value: count)
+            XCTAssertTrue(range.isValid, "Count: \(count)")
+            XCTAssertTrue(range.isAvailableForAutomation)
+        }
+        for count in [0, -1, Int.min] {
+            let range = WeChatForwardRange(unit: .messages, value: count)
+            XCTAssertFalse(range.isValid)
+            XCTAssertFalse(range.isAvailableForAutomation)
+            XCTAssertNil(range.estimatedSeconds)
+            XCTAssertNil(range.estimatedTimeTitle)
+        }
         XCTAssertNil(WeChatForwardRange(unit: .messages, value: 10).start(at: Date()))
+    }
+
+    func testTimeRangesKeepTheirExistingLimitsAndHaveNoCountEstimate() {
+        for (unit, maximum) in [(WeChatRangeUnit.hours, 720), (.days, 30)] {
+            let range = WeChatForwardRange(unit: unit, value: maximum)
+            XCTAssertTrue(range.isValid)
+            XCTAssertFalse(range.isAvailableForAutomation)
+            XCTAssertNil(range.estimatedSeconds)
+            XCTAssertNil(range.estimatedTimeTitle)
+            XCTAssertFalse(WeChatForwardRange(unit: unit, value: maximum + 1).isValid)
+            XCTAssertFalse(WeChatForwardRange(unit: unit, value: 0).isValid)
+        }
+    }
+
+    func testCountEstimateUsesFiveSecondsPerHundredAndRoundsUp() {
+        let examples = [(1, 1), (19, 1), (20, 1), (21, 2), (99, 5), (100, 5), (101, 6),
+                        (300, 15), (500, 25), (1200, 60), (2000, 100), (1_000_000, 50_000)]
+        for (count, seconds) in examples {
+            XCTAssertEqual(WeChatForwardRange(value: count).estimatedSeconds, seconds, "Count: \(count)")
+        }
+        // An unsigned oracle can add the rounding offset without overflowing.
+        for count in [Int.max - 19, Int.max - 1, Int.max] {
+            let expected = Int((UInt64(count) + 19) / 20)
+            XCTAssertEqual(WeChatForwardRange(value: count).estimatedSeconds, expected)
+        }
+    }
+
+    func testCountEstimateUsesConciseSecondsMinutesAndHours() {
+        XCTAssertEqual(WeChatForwardRange(value: 300).estimatedTimeTitle, L10n.format("预计约 %@ 秒", "15"))
+        XCTAssertEqual(WeChatForwardRange(value: 1200).estimatedTimeTitle, L10n.format("预计约 %@ 分钟", "1"))
+        XCTAssertEqual(WeChatForwardRange(value: 2000).estimatedTimeTitle, L10n.format("预计约 %@ 分 %@ 秒", "1", "40"))
+        XCTAssertEqual(WeChatForwardRange(value: 72_000).estimatedTimeTitle, L10n.format("预计约 %@ 小时", "1"))
+        XCTAssertEqual(WeChatForwardRange(value: 74_400).estimatedTimeTitle, L10n.format("预计约 %@ 小时 %@ 分钟", "1", "2"))
+        let largest = WeChatForwardRange(value: Int.max)
+        XCTAssertEqual(largest.title, L10n.format("最近 %@ 条消息", String(Int.max)))
+        XCTAssertTrue(largest.estimatedTimeTitle?.contains(String(Int((UInt64(Int.max) + 19) / 20 / 3600))) == true)
+    }
+
+    func testLargeCountPreferencesRoundTripWithoutResettingOrDroppingRecents() throws {
+        var preferences = WeChatForwardPreferences()
+        preferences.recordSuccess(.init(chat: "Large export", range: .init(value: Int.max), targetBundleIdentifier: "app.editor", targetName: "Editor"))
+        let loaded = WeChatForwardPreferences.decode(try JSONEncoder().encode(preferences))
+        XCTAssertEqual(loaded.draft.range.value, Int.max)
+        XCTAssertEqual(loaded.recent, preferences.recent)
     }
 
     func testOnlyCountRangesCanStartAutomationWhileOldTimePresetsArePreserved() throws {
@@ -68,6 +121,116 @@ final class WeChatForwardTests: XCTestCase {
         XCTAssertEqual(loaded.recent, preferences.recent)
         XCTAssertEqual(loaded.draft, preferences.draft)
         XCTAssertTrue(WeChatForwardPreferences.decode(Data("bad".utf8)).recent.isEmpty)
+    }
+
+    func testLegacyPreferencesWithoutFolderPreserveDraftAndRememberedApplication() throws {
+        let legacy = Data(#"""
+        {
+          "draft": {"chat":"Work", "range":{"unit":"messages","value":150}, "targetBundleIdentifier":"app.editor", "targetName":"Editor", "pastePath":true},
+          "recent": [{"chat":"Saved", "range":{"unit":"days","value":2}, "targetBundleIdentifier":"app.notes", "targetName":"Notes", "pastePath":false, "lastUsed":12345}]
+        }
+        """#.utf8)
+        let preferences = WeChatForwardPreferences.decode(legacy)
+        XCTAssertNil(WeChatForwardPreset().destinationFolder)
+        XCTAssertFalse(WeChatForwardPreset().mergeArchives)
+        XCTAssertEqual(preferences.draft.chat, "Work")
+        XCTAssertEqual(preferences.draft.targetBundleIdentifier, "app.editor")
+        XCTAssertEqual(preferences.draft.targetName, "Editor")
+        XCTAssertEqual(preferences.draft.range.value, 150)
+        XCTAssertTrue(preferences.draft.pastePath)
+        XCTAssertNil(preferences.draft.destinationFolder)
+        XCTAssertFalse(preferences.draft.mergeArchives)
+        let recent = try XCTUnwrap(preferences.recent.first)
+        XCTAssertEqual(recent.chat, "Saved")
+        XCTAssertEqual(recent.range, .init(unit: .days, value: 2))
+        XCTAssertEqual(recent.targetBundleIdentifier, "app.notes")
+        XCTAssertEqual(recent.lastUsed, Date(timeIntervalSinceReferenceDate: 12345))
+        XCTAssertNil(recent.destinationFolder)
+        XCTAssertFalse(recent.mergeArchives)
+    }
+
+    func testMergePreferenceIsRememberedPerChatAndReplacedOnSuccess() throws {
+        let merged = WeChatForwardPreset(chat: "Merged group", range: .init(value: 2000), targetBundleIdentifier: "app.editor", targetName: "Editor", mergeArchives: true)
+        let separate = WeChatForwardPreset(chat: "Separate group", range: .init(value: 700), targetBundleIdentifier: "app.notes", targetName: "Notes")
+        var preferences = WeChatForwardPreferences()
+        preferences.recordSuccess(merged)
+        preferences.recordSuccess(separate)
+        var loaded = WeChatForwardPreferences.decode(try JSONEncoder().encode(preferences))
+        XCTAssertFalse(loaded.draft.mergeArchives)
+        XCTAssertEqual(loaded.recent.first(where: { $0.chat == merged.chat })?.mergeArchives, true)
+        XCTAssertEqual(loaded.recent.first(where: { $0.chat == separate.chat })?.mergeArchives, false)
+
+        var updated = merged
+        updated.mergeArchives = false
+        loaded.recordSuccess(updated)
+        let reloaded = WeChatForwardPreferences.decode(try JSONEncoder().encode(loaded))
+        XCTAssertEqual(reloaded.recent.count, 2)
+        XCTAssertEqual(reloaded.draft.chat, merged.chat)
+        XCTAssertFalse(reloaded.draft.mergeArchives)
+        XCTAssertEqual(reloaded.recent.first?.mergeArchives, false)
+    }
+
+    func testMergeRecommendationOnlyAppliesAboveFiveHundredMessagesForUnmergedAppDelivery() {
+        var preset = WeChatForwardPreset(range: .init(value: 500), targetBundleIdentifier: "app.editor", targetName: "Editor")
+        XCTAssertFalse(preset.recommendsMergingArchives)
+        preset.range.value = 501
+        XCTAssertTrue(preset.recommendsMergingArchives)
+        preset.range.value = Int.max
+        XCTAssertTrue(preset.recommendsMergingArchives)
+        preset.mergeArchives = true
+        XCTAssertFalse(preset.recommendsMergingArchives)
+        preset.mergeArchives = false
+        preset.destinationFolder = URL(fileURLWithPath: "/tmp/exports", isDirectory: true)
+        XCTAssertFalse(preset.recommendsMergingArchives)
+        preset.destinationFolder = nil
+        preset.range = .init(unit: .hours, value: 600)
+        XCTAssertFalse(preset.recommendsMergingArchives)
+        preset.range = .init(value: 0)
+        XCTAssertFalse(preset.recommendsMergingArchives)
+    }
+
+    func testFolderPresetRoundTripsAndRemembersSuccessfulFolderForTheSameChat() throws {
+        let folder = URL(fileURLWithPath: "/tmp/群聊 exports", isDirectory: true)
+        let preset = WeChatForwardPreset(chat: "Example（500）", targetBundleIdentifier: "app.old", targetName: "Old",
+                                         destinationFolder: folder, pastePath: true, mergeArchives: true)
+        XCTAssertEqual(preset.destinationFolder, folder)
+        XCTAssertEqual(preset.targetBundleIdentifier, "")
+        XCTAssertEqual(preset.targetName, "")
+        XCTAssertFalse(preset.pastePath)
+        XCTAssertTrue(preset.mergeArchives)
+        var preferences = WeChatForwardPreferences()
+        preferences.recordSuccess(.init(chat: "Example", targetBundleIdentifier: "app.old", targetName: "Old"))
+        preferences.recordSuccess(preset, at: Date(timeIntervalSinceReferenceDate: 12345))
+        let loaded = WeChatForwardPreferences.decode(try JSONEncoder().encode(preferences))
+        XCTAssertEqual(loaded.draft, preferences.draft)
+        XCTAssertEqual(loaded.recent, preferences.recent)
+        XCTAssertEqual(loaded.recent.count, 1)
+        XCTAssertEqual(loaded.recent.first?.chat, "Example")
+        XCTAssertEqual(loaded.recent.first?.destinationFolder, folder)
+        XCTAssertFalse(loaded.draft.pastePath)
+        XCTAssertTrue(loaded.draft.mergeArchives)
+    }
+
+    func testDecodingFolderOverridesStaleApplicationAndPathMode() throws {
+        let encoded = Data(#"""
+        {"chat":"Saved", "range":{"unit":"messages","value":100}, "targetBundleIdentifier":"app.old", "targetName":"Old", "pastePath":true, "destinationFolder":"file:///tmp/exports/"}
+        """#.utf8)
+        let preset = try JSONDecoder().decode(WeChatForwardPreset.self, from: encoded)
+        XCTAssertEqual(preset.destinationFolder?.path, "/tmp/exports")
+        XCTAssertEqual(preset.targetBundleIdentifier, "")
+        XCTAssertEqual(preset.targetName, "")
+        XCTAssertFalse(preset.pastePath)
+        XCTAssertFalse(preset.mergeArchives)
+    }
+
+    func testExplicitNullFolderStillDecodesAsAnApplicationPreset() throws {
+        let encoded = Data(#"""
+        {"chat":"Saved", "range":{"unit":"messages","value":100}, "targetBundleIdentifier":"app.editor", "targetName":"Editor", "pastePath":true, "destinationFolder":null}
+        """#.utf8)
+        let preset = try JSONDecoder().decode(WeChatForwardPreset.self, from: encoded)
+        XCTAssertNil(preset.destinationFolder)
+        XCTAssertEqual(preset.targetBundleIdentifier, "app.editor")
+        XCTAssertTrue(preset.pastePath)
     }
 
     // Independently generated with Python's zipfile: two repeated multiline
@@ -363,12 +526,23 @@ extension WeChatForwardTests {
         XCTAssertEqual(WeChatForwardRange.digits("000"), "0")
     }
 
-    /// Out of range is still typeable — the form says why, rather than the
-    /// field silently correcting what was typed.
-    func testAnOutOfRangeNumberIsKeptSoTheFormCanExplainIt() {
-        XCTAssertEqual(WeChatForwardRange.digits("5000"), "5000")
-        XCTAssertFalse(WeChatForwardRange(unit: .messages, value: 5000).isValid)
-        // Bounded so a held key cannot overflow the count it becomes.
-        XCTAssertEqual(WeChatForwardRange.digits(String(repeating: "9", count: 40)).count, 6)
+    func testLargeCountsAreNotTruncatedToSixDigits() {
+        for value in ["5000", "1234567890", String(Int.max)] {
+            let digits = WeChatForwardRange.digits(value)
+            XCTAssertEqual(digits, value)
+            XCTAssertTrue(WeChatForwardRange(value: Int(digits) ?? 0).isValid)
+        }
+        XCTAssertEqual(WeChatForwardRange.digits(String(repeating: "0", count: 40) + String(Int.max)), String(Int.max))
+    }
+
+    /// Overflowing input stays visible for validation instead of silently
+    /// exporting a different, truncated count. Int's failable conversion is safe.
+    func testCountsBeyondIntCapacityRemainVisibleAndInvalid() {
+        for value in [String(Int.max) + "0", String(repeating: "9", count: 40)] {
+            let digits = WeChatForwardRange.digits(value)
+            XCTAssertEqual(digits, value)
+            XCTAssertNil(Int(digits))
+            XCTAssertFalse(WeChatForwardRange(value: Int(digits) ?? 0).isValid)
+        }
     }
 }

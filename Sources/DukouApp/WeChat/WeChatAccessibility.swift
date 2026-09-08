@@ -87,6 +87,7 @@ private struct WCNode {
 struct WeChatCapture: Sendable {
     /// Newest batch first. Delivery reverses this so attached ZIPs read forward.
     let directories: [URL]
+    let batchMessageCounts: [Int]
     let messageCount: Int
     let readSeconds: Double
     let captureSeconds: Double
@@ -677,7 +678,8 @@ final class WeChatAccessibility {
         // added slots. This acknowledges loading without an End round trip.
         // Slots are only a prefetch estimate; selection still counts messages.
         if try focusList(page) {
-            let slots = target + max(32, target / 4)
+            let padded = target.addingReportingOverflow(max(32, target / 4))
+            let slots = padded.overflow ? Int.max : padded.partialValue
             var homes = 0
             while loaded < slots, clock() < deadline, homes < 120 {
                 progress(L10n.text("正在加载更早的聊天记录…"))
@@ -1334,6 +1336,7 @@ final class WeChatAccessibility {
         if range.value > WeChatPrefetch.threshold { latestPage = try prefetchHistory(target: range.value) }
         else { latestPage = nil }
         var directories: [URL] = []
+        var batchMessageCounts: [Int] = []
         var start = SelectionStart.latest
         while selectedCount < range.value {
             try verifyChat()
@@ -1347,6 +1350,7 @@ final class WeChatAccessibility {
             steps.append(["kind": "archive", "selected": selected.count,
                           "messages": exportedCount ?? selected.count, "estimated": exportedCount == nil])
             directories.append(directory)
+            batchMessageCounts.append(exportedCount ?? selected.count)
             // Selection controls navigation and when to stop. Parsed counts
             // only describe the exported payload, so small differences never
             // trigger extra selection, retries or a discarded native ZIP.
@@ -1354,6 +1358,6 @@ final class WeChatAccessibility {
             count += exportedCount ?? selected.count
         }
         phase = "complete"; outcome = "exported"
-        return WeChatCapture(directories: directories, messageCount: count, readSeconds: 0, captureSeconds: clock() - started)
+        return WeChatCapture(directories: directories, batchMessageCounts: batchMessageCounts, messageCount: count, readSeconds: 0, captureSeconds: clock() - started)
     }
 }

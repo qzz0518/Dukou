@@ -56,6 +56,7 @@ final class PromptTests: XCTestCase {
         XCTAssertEqual(settings.selected?.text, "请总结")
         XCTAssertNil(settings.attachment(for: .forward))
         XCTAssertNil(settings.attachment(for: .wechat))
+        XCTAssertNil(settings.attachment(for: .moments))
     }
 
     func testEachSurfaceHasItsOwnSwitchOverTheSharedSelection() {
@@ -63,9 +64,13 @@ final class PromptTests: XCTestCase {
         settings.attachToWeChat = true
         XCTAssertNil(settings.attachment(for: .forward))
         XCTAssertEqual(settings.attachment(for: .wechat)?.text, "请总结")
+        XCTAssertNil(settings.attachment(for: .moments))
+        settings.attachToMoments = true
+        XCTAssertEqual(settings.attachment(for: .moments)?.text, "请总结")
         // A blank prompt is no prompt, whatever the switch says.
         settings.prompts[0].text = "   "
         XCTAssertNil(settings.attachment(for: .wechat))
+        XCTAssertNil(settings.attachment(for: .moments))
     }
 
     func testTheLibraryHoldsThreeAndAddingSelectsTheNewOne() {
@@ -105,5 +110,6 @@ final class PromptTests: XCTestCase {
         XCTAssertEqual(settings.prompts.map(\.text), ["1", "2", "3"])
         XCTAssertEqual(settings.selected?.text, "1")
         XCTAssertEqual(settings.attachment(for: .forward)?.text, "1")
+        XCTAssertFalse(settings.attachToMoments)
     }
 }

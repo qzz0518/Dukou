@@ -98,14 +98,16 @@ final class AutomationHUD {
         guard escapeWatchers.isEmpty else { return }
         let cancel = { [weak self] in MainActor.assumeIsolated { self?.onCancel() } }
         if let global = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { event in
-            guard event.keyCode == 53 else { return }
+            guard event.keyCode == 53,
+                  event.cgEvent?.getIntegerValueField(.eventSourceUserData) != MomentsAccessibility.eventTag else { return }
             cancel()
         }) { escapeWatchers.append(global) }
         // Dukou itself is frontmost until the automation takes the front, and
         // for the settings window Escape would otherwise close the window out
         // from under a run the user meant to stop.
         if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { event in
-            guard event.keyCode == 53 else { return event }
+            guard event.keyCode == 53,
+                  event.cgEvent?.getIntegerValueField(.eventSourceUserData) != MomentsAccessibility.eventTag else { return event }
             cancel()
             return nil
         }) { escapeWatchers.append(local) }

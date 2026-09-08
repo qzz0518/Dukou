@@ -18,6 +18,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case general
     case entries
     case wechat
+    case moments
     case permissions
     case history
     case about
@@ -29,6 +30,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: L10n.text("通用")
         case .entries: L10n.text("入口")
         case .wechat: L10n.text("快捷微信转发")
+        case .moments: L10n.text("快捷朋友圈转发")
         case .permissions: L10n.text("权限")
         case .history: L10n.text("记录")
         case .about: L10n.text("关于")
@@ -40,6 +42,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: "slider.horizontal.3"
         case .entries: "square.and.arrow.up"
         case .wechat: "bubble.left.and.bubble.right"
+        case .moments: "photo.on.rectangle.angled"
         case .permissions: "checkmark.shield"
         case .history: "clock.arrow.circlepath"
         case .about: "info.circle"
@@ -87,6 +90,7 @@ struct SettingsView: View {
     @ObservedObject var router: SettingsRouter
     @ObservedObject var forwardTargets: ForwardTargets
     @ObservedObject var wechat: WeChatQuickForward
+    @ObservedObject var moments: MomentsQuickForward
     @ObservedObject var updater: AppUpdater
     let actions: SettingsActions
 
@@ -157,6 +161,8 @@ struct SettingsView: View {
             EntriesPane(targets: forwardTargets, preferences: preferences)
         case .wechat:
             WeChatPane(forward: wechat, authorization: authorization, preferences: preferences)
+        case .moments:
+            MomentsPane(forward: moments, authorization: authorization, preferences: preferences)
         case .permissions:
             PermissionsPane(authorization: authorization)
         case .history:

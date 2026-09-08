@@ -164,6 +164,56 @@ struct SettingsChoice<Value: Hashable>: Identifiable {
     var image: NSImage? = nil
 }
 
+/// An independent option with the same surface and focus treatment as the
+/// settings inputs. It keeps checkbox semantics and can be combined with peers.
+struct SettingsOptionToggleStyle: ToggleStyle {
+    let symbol: String
+    @Environment(\.isEnabled) private var isEnabled
+    @FocusState private var focused: Bool
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        Button { configuration.isOn.toggle() } label: {
+            HStack(spacing: Space.s) {
+                Image(systemName: symbol)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(configuration.isOn ? Theme.accent : Theme.inkSecondary)
+                    .frame(width: 16)
+                    .accessibilityHidden(true)
+                configuration.label
+                    .font(SettingsControlMetrics.font)
+                    .foregroundStyle(Theme.ink)
+                Spacer(minLength: Space.s)
+                Image(systemName: configuration.isOn ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(configuration.isOn ? Theme.controlOn : Theme.inputStroke)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, SettingsControlMetrics.inset)
+            .frame(height: SettingsControlMetrics.height + Space.xs)
+            .frame(maxWidth: .infinity)
+            .background(configuration.isOn ? Theme.accentSoft : (hovering && isEnabled ? Theme.hover : Theme.sunken),
+                        in: RoundedRectangle(cornerRadius: SettingsControlMetrics.radius))
+            .overlay {
+                RoundedRectangle(cornerRadius: SettingsControlMetrics.radius)
+                    .strokeBorder(configuration.isOn ? Theme.accent : Theme.strokeStrong, lineWidth: Stroke.hairline)
+                    .allowsHitTesting(false)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: SettingsControlMetrics.radius))
+        }
+        .buttonStyle(PlainPressButtonStyle(staticFeedback: true))
+        .focused($focused)
+        .focusEffectDisabled()
+        .modifier(SettingsFocusRing(focused: focused))
+        .onHover { hovering = $0 }
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityRepresentation {
+            Toggle(isOn: configuration.$isOn) { configuration.label }
+                .toggleStyle(.checkbox)
+        }
+    }
+}
+
 /// The same choice control for a compact preference and a full-width app list.
 /// Its popover owns arrow-key navigation; a selection commits only on activation.
 struct SettingsSelect<Value: Hashable>: View {

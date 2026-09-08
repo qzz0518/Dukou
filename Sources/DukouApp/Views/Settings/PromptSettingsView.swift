@@ -1,11 +1,13 @@
 import DukouCore
 import SwiftUI
 
-/// The 附加 Prompt controls, shared by 入口 and 快捷微信转发: one switch for
-/// this surface, then the library and the selection that both surfaces share.
+/// The 附加 Prompt controls: one switch per surface, with a shared library
+/// and selection across forwarding pages.
 struct PromptSettingsView: View {
     @ObservedObject var preferences: Preferences
     let surface: PromptSurface
+    /// Quick exports keep the editor out of the way until attachment is on.
+    var compact = false
 
     var body: some View {
         // The section header already says 附加 Prompt, so the switch carries
@@ -25,28 +27,30 @@ struct PromptSettingsView: View {
             .accessibilityLabel(Text(switchDetail))
         }
 
-        VStack(alignment: .leading, spacing: Space.s) {
-            ForEach($preferences.prompt.prompts) { $prompt in
-                PromptRow(
-                    prompt: $prompt,
-                    isSelected: preferences.prompt.selectedID == prompt.id,
-                    select: { preferences.prompt.selectedID = prompt.id },
-                    remove: { preferences.prompt.remove(id: prompt.id) }
-                )
-            }
-            HStack(alignment: .center, spacing: Space.m) {
-                Text(L10n.text("选中的那条会被附加，最多 3 条，两页共用。"))
-                    .font(Typo.paneCaption)
-                    .foregroundStyle(Theme.inkTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: Space.m)
-                Button {
-                    preferences.prompt.add(AttachedPrompt(text: ""))
-                } label: {
-                    Label(L10n.text("添加 Prompt"), systemImage: "plus")
+        if !compact || isEnabled {
+            VStack(alignment: .leading, spacing: Space.s) {
+                ForEach($preferences.prompt.prompts) { $prompt in
+                    PromptRow(
+                        prompt: $prompt,
+                        isSelected: preferences.prompt.selectedID == prompt.id,
+                        select: { preferences.prompt.selectedID = prompt.id },
+                        remove: { preferences.prompt.remove(id: prompt.id) }
+                    )
                 }
-                .buttonStyle(SettingsActionButtonStyle())
-                .disabled(!preferences.prompt.canAdd)
+                HStack(alignment: .center, spacing: Space.m) {
+                    Text(L10n.text("选中的那条会被附加，最多 3 条，各转发页面共用。"))
+                        .font(Typo.paneCaption)
+                        .foregroundStyle(Theme.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: Space.m)
+                    Button {
+                        preferences.prompt.add(AttachedPrompt(text: ""))
+                    } label: {
+                        Label(L10n.text("添加 Prompt"), systemImage: "plus")
+                    }
+                    .buttonStyle(SettingsActionButtonStyle())
+                    .disabled(!preferences.prompt.canAdd)
+                }
             }
         }
     }
@@ -55,6 +59,7 @@ struct PromptSettingsView: View {
         switch surface {
         case .forward: return preferences.prompt.attachToForwards
         case .wechat: return preferences.prompt.attachToWeChat
+        case .moments: return preferences.prompt.attachToMoments
         }
     }
 
@@ -62,14 +67,16 @@ struct PromptSettingsView: View {
         switch surface {
         case .forward: preferences.prompt.attachToForwards = enabled
         case .wechat: preferences.prompt.attachToWeChat = enabled
+        case .moments: preferences.prompt.attachToMoments = enabled
         }
     }
 
     private var switchDetail: String {
+        if compact { return L10n.text("把选中的 Prompt 一起粘贴。") }
         switch surface {
         case .forward:
             return L10n.text("发给 Codex、Claude 或自定义应用时，把选中的 Prompt 一起粘过去。")
-        case .wechat:
+        case .wechat, .moments:
             return L10n.text("导出的记录粘贴到目标应用时，把选中的 Prompt 一起粘过去。")
         }
     }

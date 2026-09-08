@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var shelfController: ShelfController?
     private var actionRunner: ActionRunner?
     private var wechat: WeChatQuickForward?
+    private var moments: MomentsQuickForward?
     private var statusItem: StatusItemController?
     private var cancellables = Set<AnyCancellable>()
     private var settingsWindow: SettingsWindowController?
@@ -106,6 +107,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         wechat.openSettings = { [weak self] tab in self?.openMainWindow(tab) }
         self.wechat = wechat
+        let moments = MomentsQuickForward(
+            model: model, shelf: shelf, runner: runner, authorization: authorization, preferences: preferences
+        )
+        moments.openSettings = { [weak self] tab in self?.openMainWindow(tab) }
+        self.moments = moments
+        wechat.otherAutomationIsBusy = { [weak moments] in moments?.isBusy ?? false }
+        moments.otherAutomationIsBusy = { [weak wechat] in (wechat?.isBusy ?? false) || (wechat?.isReadingChat ?? false) }
+        runner.reservedFrame = { [weak wechat, weak moments] in moments?.hudFrame ?? wechat?.hudFrame }
 
         // One place decides what an arriving batch means; the shelf and the
         // forwards are both just outcomes of it.
@@ -131,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 router: settingsRouter,
                 forwardTargets: forwardTargets,
                 wechat: wechat,
+                moments: moments,
                 updater: updater,
                 actions: settingsActions
             )
