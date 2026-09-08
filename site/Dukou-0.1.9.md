@@ -1,3 +1,6 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
 ## 更新日志
 
 1. **新增「快捷朋友圈转发」（实验）**。填要导出的条数，图片和视频可以分别选。Dukou 把作者、微信显示的时间和完整正文按时间线整理成 TXT，媒体放进同一个 ZIP 的 `media/` 文件夹，粘给应用或存进文件夹。读不到作者时会停下来，不猜——记错人比少一条更糟；没能加载的内容会写进 TXT，而不是悄悄丢掉。图片和视频要逐个打开再下载，速度很慢，这段时间请不要碰电脑，按 ESC 可以中断。采集媒体时会临时借用剪贴板，结束后如果你已经复制了新东西，就不再覆盖。
