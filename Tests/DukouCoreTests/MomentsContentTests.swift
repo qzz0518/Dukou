@@ -3,6 +3,25 @@ import Testing
 @testable import DukouCore
 
 struct MomentsContentTests {
+    @Test func recognizesNativeAdvertisementPopover() {
+        // Native AX controls observed on the LibTV ad; row text has no ad flag.
+        #expect(MomentsAdvertisementMenu.matches(
+            staticTexts: ["赞助商提供的广告信息", "你觉的这条广告怎么样？", "还不错", "关闭该广告", "投诉"],
+            buttonLabels: ["还不错", "关闭该广告"]
+        ))
+    }
+
+    @Test func advertisementDetectionRequiresBothControlsAndTheirRoles() {
+        let notice = "赞助商提供的广告信息"
+        let close = "关闭该广告"
+        #expect(!MomentsAdvertisementMenu.matches(staticTexts: [notice, close], buttonLabels: []))
+        #expect(!MomentsAdvertisementMenu.matches(staticTexts: [], buttonLabels: [notice, close]))
+        #expect(!MomentsAdvertisementMenu.matches(staticTexts: [notice], buttonLabels: ["投诉"]))
+        #expect(!MomentsAdvertisementMenu.matches(staticTexts: [], buttonLabels: [close]))
+        #expect(!MomentsAdvertisementMenu.matches(staticTexts: ["小明 \(notice) \(close) 昨天"], buttonLabels: [close]))
+        #expect(!MomentsAdvertisementMenu.matches(staticTexts: ["广告", "推广", "LibTV-official"], buttonLabels: ["更多"]))
+    }
+
     @Test func preservesSpacedAuthorAndFullBody() throws {
         let content = try #require(MomentsContent.parse("Future Shine 第一段\n\n完整长文 包含4张图片 东京 6小时前 ", author: "Future Shine"))
         #expect(content.text == "第一段\n\n完整长文 包含4张图片 东京")

@@ -119,6 +119,11 @@ final class MomentsAccessibility {
             }
             if let row = page.rows.first(where: { seen[$0.index] == nil }) {
                 let aligned = try align(row, bottom: false)
+                if try skipAdvertisement(aligned) {
+                    seen[row.index] = row.identity
+                    idle = 0
+                    continue
+                }
                 progress(L10n.format("正在读取朋友圈 · %d / %d", records.count + 1, preset.count))
                 let author = try readAuthor(aligned)
                 guard let content = MomentsContent.parse(aligned.node.label, author: author) else { throw MomentsAutomationError.author }
@@ -371,6 +376,45 @@ final class MomentsAccessibility {
         // 12 pt gap, and a 436 pt body. Narrow layouts keep a 24 pt inset.
         max(row.node.rect.minX + 24, row.node.rect.midX - 256) + 76
     }
+    private func isAdvertisementMenu(_ nodes: [SNSNode]) -> Bool {
+        MomentsAdvertisementMenu.matches(
+            staticTexts: nodes.filter { $0.role == "AXStaticText" }.flatMap(\.strings),
+            buttonLabels: nodes.filter { $0.role == "AXButton" }.flatMap(\.strings)
+        )
+    }
+    private func skipAdvertisement(_ row: Row) throws -> Bool {
+        let initial = try nodes()
+        guard !isAdvertisementMenu(initial), !initial.contains(where: { $0.id == "display_name_text" }),
+              !isViewer(initial) else { throw MomentsAutomationError.timeline }
+        // The ad badge is absent from AX, even when hit-testing it. Its native
+        // popover does expose an explicit sponsorship notice and close-ad
+        // button. Probe the right end of the header before touching the avatar,
+        // which would navigate to the advertiser's website. On ordinary posts
+        // this is blank space (or the end of a long author's name).
+        ownsOverlay = true
+        overlayIsMedia = false
+        let point = CGPoint(x: min(textX(row) + 436 - 23, row.node.rect.maxX - 55), y: row.node.rect.minY + 32)
+        guard row.node.rect.contains(point) else { ownsOverlay = false; throw MomentsAutomationError.timeline }
+        try click(point, settle: 0.015)
+        _ = try waitNode(0.2, poll: 0.025, where: {
+            $0.named([MomentsAdvertisementMenu.notice]) || $0.id == "display_name_text"
+        })
+        let current = try nodes()
+        let advertisement = isAdvertisementMenu(current)
+        let hasNotice = current.contains(where: { $0.named([MomentsAdvertisementMenu.notice]) })
+        if hasNotice || current.contains(where: { $0.id == "display_name_text" }) {
+            // Esc only dismisses the popover. Never press "关闭该广告", which
+            // would remove the user's ad from the feed.
+            try closeOverlay()
+        } else {
+            ownsOverlay = false
+        }
+        // A partial ad popover must not fall through to an avatar click.
+        guard !hasNotice || advertisement else { throw MomentsAutomationError.timeline }
+        guard let rebound = try page().rows.first(where: { $0.index == row.index }),
+              rebound.identity == row.identity else { throw MomentsAutomationError.changed }
+        return advertisement
+    }
     private func readAuthor(_ row: Row) throws -> String {
         ownsOverlay = true
         overlayIsMedia = false
@@ -425,8 +469,10 @@ final class MomentsAccessibility {
         try key(53, raiseWindow: overlayIsMedia, settle: overlayIsMedia ? 0.08 : 0.015)
         let deadline = clock() + 2
         repeat {
-            let current = try self.nodes(stopWhen: { $0.id == "display_name_text" || self.isViewer([$0]) })
-            if !current.contains(where: { $0.id == "display_name_text" }), !isViewer(current) {
+            let current = try self.nodes(stopWhen: {
+                $0.id == "display_name_text" || self.isViewer([$0]) || $0.named([MomentsAdvertisementMenu.notice])
+            })
+            if !current.contains(where: { $0.id == "display_name_text" || $0.named([MomentsAdvertisementMenu.notice]) }), !isViewer(current) {
                 // Qt removes viewer controls before its closing animation
                 // stops intercepting clicks on the timeline underneath.
                 try pause(overlayIsMedia ? 0.3 : 0.03)

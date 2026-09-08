@@ -1,5 +1,15 @@
 import Foundation
 
+/// WeChat 4.1.13 exposes this popover, but not the ad badge in the AX row.
+/// Require both native controls; a post merely mentioning ads is not evidence.
+public enum MomentsAdvertisementMenu {
+    public static let notice = "赞助商提供的广告信息"
+
+    public static func matches(staticTexts: [String], buttonLabels: [String]) -> Bool {
+        staticTexts.contains(notice) && buttonLabels.contains("关闭该广告")
+    }
+}
+
 public struct MomentsForwardPreset: Codable, Sendable {
     public var count = 20
     public var saveImages = false
