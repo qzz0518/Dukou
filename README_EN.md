@@ -6,7 +6,6 @@
   <p><a href="README.md">简体中文</a> · English</p>
   <p>
     <img src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&logo=apple" alt="macOS 14+" />
-    <img src="https://img.shields.io/badge/Swift-6.2-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift 6.2" />
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
     <a href="https://x.com/zerah_eth"><img src="https://img.shields.io/badge/follow-%40zerah__eth-111111?style=flat-square&logo=x&logoColor=white" alt="Follow @zerah_eth on X" /></a>
   </p>
@@ -34,36 +33,33 @@ The catch is that the "forward to other apps" list only shows apps that ship a s
 | **Copy to Clipboard** | Just puts it on the clipboard; the ⌘V is yours |
 | **Send to Custom** | Your own list of apps: one app just goes, two or more get a small picker card next to the pointer |
 
-One step further, Quick WeChat forward (experimental) exports, verifies and pastes the latest messages of a named group automatically, by group name and message count, with no manual selection: about 20 seconds for 500 messages.
-
-> [!NOTE]
-> Early release. The five entries, the shelf, automated pasting and Sparkle updates all work end to end on the author's Mac; large archives, multiple displays and the permission guide on a fresh machine are still being verified one by one.
+One step further, Quick WeChat forward and Quick Moments forward (experimental) do the selecting, exporting and pasting for you — just name what you want and how much of it.
 
 ## Features
 
-- **The extension has no interface.** Pick an entry and nothing appears on screen; the files just land. The copy finishes before the system reclaims its temporary file, so a batch either arrives whole or not at all.
+- **The extension has no interface.** Pick an entry and nothing appears on screen; the files just land. A batch either arrives whole or not at all.
 - **Entries you can switch off.** Each entry is a separate system extension, toggled from Settings → Entries rather than three panes deep in System Settings.
 - **A Dropover-style shelf.** A floating square that never takes focus, docked to the corner you chose. Drag out and get accepted, and it is consumed; drag everything out and it disappears. Nothing is deleted; the files move to History.
 - **History that cleans itself.** Every batch records its entry, its outcome and its size. Anything not on the shelf is moved to the Trash after the retention window (7 days by default), and can be put back on the shelf at any time.
 - **Send to any app.** The Send to Custom list is kept in Settings, and the same list backs the Send to ▸ menus on the shelf and in History. Terminal-like apps can receive quoted file paths instead of files.
-- **Attached prompt.** When sending to Codex, Claude, a custom app or through the quick WeChat forward, a prompt of your own is pasted first, then the files (for terminal-like apps it is folded in ahead of the paths). One summary prompt comes built in; keep up to three and switch between them.
+- **Attached prompt.** When sending to Codex, Claude, a custom app or through a quick forward, a prompt of your own is pasted first, then the files (for terminal-like apps it is folded in ahead of the paths). One summary prompt comes built in; keep up to three and switch between them.
 - **Failures always have a way out.** App not installed, permission missing, app never came forward: the files are already on the clipboard, and the message offers to put them on the shelf. Success shows nothing.
-- **Quick WeChat forward (experimental).** Name a group and a message count; Dukou drives WeChat through Accessibility to select and merge-forward the messages, verifies the exported ZIP, and pastes it into the app you are using — even when that app is behind another window or minimized. About 20 seconds for 500 messages, batched automatically past 100. A capsule in the corner names each step and cancels on one click; until it finishes, the mouse and keyboard belong to Dukou.
-- **Safe updates.** Sparkle checks for EdDSA-signed releases and downloads only the one you confirm, from GitHub Releases.
+- **Quick WeChat forward (experimental).** Name a group and a message count, and Dukou does the selecting and merge-forwarding in WeChat, then pastes the ZIP into the app you are using or saves it to a folder you pick. No cap on the count; about 5 seconds per 100 messages, exported in batches past 100, and batches can be combined into a single ZIP. Files are named by group, time range and count, and a folder destination opens after saving. A status capsule in the corner reports progress; ESC or Cancel stops it at any time.
+- **Quick Moments forward (experimental).** Choose how many recent posts to export, with photos and videos as separate options. Authors, the times WeChat shows and the full text go into a chronological TXT, with the media in a `media/` folder inside the same ZIP, and the result pastes into an app or saves to a folder just the same. Photos and videos have to be opened and downloaded one by one, which is slow, so leave the computer alone while it runs; ESC stops it, and anything that could not be read is marked in the TXT.
+- **Safe updates.** Sparkle checks for signed releases and downloads only the one you confirm, from GitHub Releases.
 - **Simplified Chinese and English** throughout, share-menu entries included.
 
 ## What it does not do
 
-- It does not unpack, read, preview or index anything. The ZIP is an opaque file from start to finish.
-- It does not use the network, except to check for updates. The five extensions are sandboxed with no network permission, and `Scripts/check-release-config.sh` keeps asserting that; the app's only request is Sparkle reading the signed appcast.
-- It does not use private APIs. Activation goes through `NSWorkspace`; the automated ⌘V is a `CGEvent` behind the system's own permission.
+- It does not read WeChat databases, and it builds no chat preview or index. The chat history is the ZIP WeChat exported; Dukou reads only its dates and counts, to name the file. Moments are read only when you start a Moments forward, and what it reads goes into a ZIP of its own.
+- It does not use the network, except to check for updates. The five entry extensions are sandboxed with no network permission, and the app's only request is fetching update information.
+- It does not use private APIs. Bringing an app forward and pressing ⌘V for you both go through documented system interfaces, behind a permission you grant.
 
 ## Getting started
 
 ### Requirements
 
 - macOS 14 or later
-- Xcode 26 (Swift 6.2) to build; [mise](https://mise.jdx.dev) is optional
 - ChatGPT.app or Claude.app for the Send to Codex / Claude entries
 
 ### Homebrew
@@ -78,23 +74,6 @@ Update later with `brew upgrade --cask dukou`, or let the app offer the update i
 
 Download the latest `Dukou-*.dmg` from [Releases](https://github.com/qzz0518/Dukou/releases), open it and drag Dukou into Applications. Homebrew and Releases serve the same Developer ID-signed, Apple-notarized Universal 2 DMG.
 
-### Build from source
-
-```bash
-git clone https://github.com/qzz0518/Dukou.git
-cd Dukou
-mise run reinstall   # assemble and sign dist/Dukou.app, install into ~/Applications
-```
-
-Without mise:
-
-```bash
-CONFIG=release Scripts/make-app.sh
-Scripts/install-dev-build.sh
-```
-
-The build script picks a stable Developer ID or Apple Development identity from the keychain when there is one. That matters for Accessibility: TCC remembers the grant by code signature, and an ad-hoc signature has to be granted again after every rebuild.
-
 ### First run
 
 1. Open Dukou. A four-step guide walks you through switching on the entries you want. A freshly installed share extension is **registered but disabled** until you switch it on.
@@ -105,37 +84,11 @@ The build script picks a stable Developer ID or Apple Development identity from 
 
 | Data | What Dukou does with it |
 |---|---|
-| The ZIP WeChat exports | Copied into the App Group container as is; never unpacked or read |
-| Clipboard | File URLs, the attached prompt, or the quoted paths a terminal asked for |
-| Network | Software updates only: Sparkle reads a signed appcast on GitHub Pages and downloads only the release you confirm, from GitHub Releases |
-| Sandbox | All five extensions are sandboxed. The app is not: switching entries calls `pluginkit`, and `pkd` refuses a sandboxed client |
-
-## Development
-
-| Command | Purpose |
-|---|---|
-| `mise run build` | Build all three targets |
-| `mise run test` | Run the tests |
-| `mise run i18n` | Check the Chinese and English resources against the source |
-| `mise run release-config` | Check bundle ids, the App Group, entitlements and the five entries |
-| `mise run bundle` | Assemble and sign `dist/Dukou.app` for the host architecture |
-| `mise run bundle-universal` | The same as Universal 2 |
-| `mise run install` / `reinstall` | Install into `~/Applications`; `reinstall` rebuilds first |
-| `mise run icon` | Generate the PNG, ICNS and README icon from `Resources/AppIcon-artwork.png` |
-| `mise run dmg-background` | Draw the Finder background the DMG opens with |
-| `mise run release-dry-run` | Build a Developer ID-signed Universal 2 DMG without notarizing it |
-| `mise run release` | Build, sign, notarize, staple and generate the signed appcast from a clean tag |
-| `mise run verify` | Build, test, check and bundle in one step |
-
-```text
-Sources/
-├── DukouCore/    Inbox protocol, manifests, intents, batch state, and the automation's pure logic
-├── DukouShare/   The share extension: import and commit, no interface
-└── DukouApp/     Resident app, shelf, auto-paste, permission guide, settings, WeChat automation, Sparkle updates
-Tests/            Inbox, batch state, forward targets and WeChat transcript parsing
-```
-
-The five `.appex` bundles run one executable and tell themselves apart by `DKShareAction`. The extension copies the files into `Inbox/Staging` in the App Group, writes the manifest and the intent, then renames the whole directory into `Inbox/Ready` in one step. The app watches that directory and consumes the intent, deleting it as it reads, so a forward runs exactly once.
+| The ZIP WeChat exports | Kept as is in Dukou's own container; a quick forward reads its dates and counts for naming, and can combine batches into one ZIP |
+| Moments text and media | Read only when you start a Moments forward, then packaged as a TXT and media ZIP under the same retention as chat history. The clipboard is borrowed while media is collected and restored if nothing newer was copied |
+| Clipboard | Files, the attached prompt, or the quoted paths a terminal asked for |
+| Network | Software updates only: signed update information is fetched periodically, and only the release you confirm is downloaded, from GitHub Releases |
+| Sandbox | All five extensions run sandboxed |
 
 ## Contributing
 
