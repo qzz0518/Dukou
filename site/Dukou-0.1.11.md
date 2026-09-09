@@ -1,3 +1,6 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
 ## 更新日志
 
 - 快捷微信转发新增「HTML 预览」。勾选后，导出的 ZIP 里会多一个 `index.html`，完整解压后双击就能像聊天界面一样看记录：搜索昵称和正文、按日期跳转、放大图片、直接播放音视频。
