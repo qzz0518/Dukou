@@ -94,9 +94,20 @@ struct WeChatPane: View {
                     onRefresh: forward.refreshApplications,
                     identifierPrefix: "wechat"
                 )
-                Toggle(L10n.text("合并为一个 ZIP"), isOn: $forward.draft.mergeArchives)
-                    .toggleStyle(SettingsOptionToggleStyle(symbol: "archivebox"))
-                    .accessibilityIdentifier("wechat.mergeArchives")
+                HStack(spacing: Space.s) {
+                    Toggle(L10n.text("合并为一个 ZIP"), isOn: $forward.draft.mergeArchives)
+                        .toggleStyle(SettingsOptionToggleStyle(symbol: "archivebox"))
+                        .accessibilityIdentifier("wechat.mergeArchives")
+                    Toggle(L10n.text("HTML 预览"), isOn: $forward.draft.htmlPreview)
+                        .toggleStyle(SettingsOptionToggleStyle(symbol: "doc.richtext"))
+                        .accessibilityIdentifier("wechat.htmlPreview")
+                }
+                if forward.draft.htmlPreview {
+                    Text(L10n.text("解压后打开 index.html，按时间线查看聊天记录。"))
+                        .font(Typo.paneCaption).foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("wechat.htmlPreviewHelp")
+                }
                 if forward.draft.recommendsMergingArchives {
                     Label(L10n.text("消息较多，建议合并以减少附件数量。"), systemImage: "lightbulb")
                         .font(Typo.paneCaption).foregroundStyle(Theme.warning)

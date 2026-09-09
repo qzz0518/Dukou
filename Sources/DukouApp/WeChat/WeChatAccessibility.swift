@@ -91,6 +91,7 @@ struct WeChatCapture: Sendable {
     let messageCount: Int
     let readSeconds: Double
     let captureSeconds: Double
+    let selfSender: String?
 }
 
 final class WeChatAccessibility {
@@ -166,6 +167,103 @@ final class WeChatAccessibility {
         let probe = try WeChatAccessibility(chat: "", cancellation: WeChatCancellation(), progress: { _ in })
         guard let node = try probe.scan().first(where: { $0.id == "current_chat_name_label" }), let name = node.strings.first else { throw WeChatAutomationError.wrongChat }
         return WeChatForwardPreset.normalizedChat(name)
+    }
+
+    /// Opens the account pane only for HTML exports and closes only the
+    /// settings window this probe created. It never touches account controls,
+    /// reads a database, or keeps an identity across account switches.
+    func currentAccountNickname() throws -> String? {
+        try frontmost()
+        let settingsTitles = ["设置", "設定", "Settings", "Preferences", "偏好设置"]
+        func settingsWindows() -> [WCNode] {
+            (wcAttribute(root, "AXWindows") as? [AXUIElement] ?? []).map(WCNode.init).filter {
+                $0.role == "AXWindow" && $0.strings.contains(where: settingsTitles.contains)
+            }
+        }
+        func nickname(_ window: WCNode) -> String? {
+            let fields = window.children.map(WCNode.init).map {
+                WeChatAccountIdentity.Field(role: $0.role, text: $0.strings.first ?? "")
+            }
+            return WeChatAccountIdentity.nickname(in: fields)
+        }
+        // An already-open settings window belongs to the user. Read it as-is;
+        // never switch its tab or close it for an optional preview feature.
+        let existing = settingsWindows()
+        if !existing.isEmpty { return existing.count == 1 ? nickname(existing[0]) : nil }
+        guard let menu = wcAttribute(root, "AXMenuBar"), CFGetTypeID(menu) == AXUIElementGetTypeID() else { return nil }
+        var queue = [menu as! AXUIElement], index = 0
+        var settings: WCNode?
+        while index < queue.count && index < 300 {
+            if index % 16 == 0 { try check() }
+            let node = WCNode(queue[index]); index += 1
+            if node.role == "AXMenuItem", node.enabled,
+               node.strings.contains(where: settingsTitles.contains),
+               wcAttribute(node.element, "AXMenuItemCmdChar") as? String == "," {
+                settings = node
+                break
+            }
+            queue.append(contentsOf: node.children)
+        }
+        guard let settings else { return nil }
+        try frontmost()
+        // The real menu item supports AXPress even while the menu is closed.
+        // No keyboard shortcut can reach the conversation's draft by mistake.
+        let result = AXUIElementPerformAction(settings.element, "AXPress" as CFString)
+        var ownedWindow: AXUIElement?
+        var closed = false
+        func closeOwnedSettings() throws {
+            if let ownedWindow, let window = settingsWindows().first(where: { CFEqual($0.element, ownedWindow) }) {
+                guard let button = wcAttribute(window.element, "AXCloseButton"),
+                      CFGetTypeID(button) == AXUIElementGetTypeID(),
+                      AXUIElementPerformAction(button as! AXUIElement, "AXPress" as CFString) == .success else {
+                    throw WeChatAutomationError.control("关闭设置")
+                }
+            }
+            let deadline = clock() + 0.5
+            func isOpen() -> Bool { ownedWindow.map { owned in settingsWindows().contains { CFEqual($0.element, owned) } } ?? false }
+            while isOpen(), clock() < deadline { Thread.sleep(forTimeInterval: 0.02) }
+            guard !isOpen() else { throw WeChatAutomationError.control("关闭设置") }
+            closed = true
+            settledList = nil
+        }
+        defer { if !closed { try? closeOwnedSettings() } }
+        var value: String?
+        if result == .success || result == .cannotComplete {
+            let deadline = clock() + 1
+            var window: WCNode?
+            repeat {
+                let found = settingsWindows()
+                if found.count == 1 { window = found[0]; ownedWindow = found[0].element; break }
+                // A menu action may already have opened a window when ESC or
+                // a focus change arrives. Bind its cleanup target before
+                // propagating cancellation; this wait is bounded to one second.
+                Thread.sleep(forTimeInterval: 0.02)
+            } while clock() < deadline
+            try frontmost()
+            if let window {
+                value = nickname(window)
+                if value == nil {
+                    let accountTabs = ["账号与存储", "帳號與儲存空間", "Account & Storage", "Account and Storage"]
+                    if settingsWindows().contains(where: { CFEqual($0.element, window.element) }),
+                       let tab = WCNode(window.element).children.map(WCNode.init).first(where: {
+                        $0.role == "AXButton" && $0.strings.contains(where: accountTabs.contains)
+                    }), AXUIElementPerformAction(tab.element, "AXPress" as CFString) == .success {
+                        // No coordinate fallback for this optional probe: an
+                        // unsupported tab leaves identity unknown.
+                        let deadline = clock() + 0.6
+                        repeat {
+                            try frontmost()
+                            value = nickname(WCNode(window.element))
+                            if value != nil { break }
+                            try pause(0.02)
+                        } while clock() < deadline
+                    }
+                }
+            }
+        }
+        try closeOwnedSettings()
+        try verifyChat()
+        return value
     }
 
     private func check() throws { if !cleaningUp { try cancellation.check() } }
@@ -1321,7 +1419,7 @@ final class WeChatAccessibility {
         }
     }
 
-    func capture(range: WeChatForwardRange, ready: URL, shelfExtension: URL) throws -> WeChatCapture {
+    func capture(range: WeChatForwardRange, ready: URL, shelfExtension: URL, identifySelf: Bool = false) throws -> WeChatCapture {
         guard range.unit == .messages else { throw WeChatAutomationError.timeRangeUnavailable }
         guard range.isValid else { throw WeChatAutomationError.selection }
         let started = clock()
@@ -1329,6 +1427,7 @@ final class WeChatAccessibility {
         defer { cleanup(); diagnostics(started: started, outcome: outcome, count: count) }
         progress(L10n.text("正在打开微信群聊…"))
         try openChat()
+        let selfSender = identifySelf ? try currentAccountNickname() : nil
         // Anything past one native batch reaches history WeChat has not
         // materialised yet. Load it in one pass now rather than a gesture at a
         // time inside every batch's budget.
@@ -1358,6 +1457,7 @@ final class WeChatAccessibility {
             count += exportedCount ?? selected.count
         }
         phase = "complete"; outcome = "exported"
-        return WeChatCapture(directories: directories, batchMessageCounts: batchMessageCounts, messageCount: count, readSeconds: 0, captureSeconds: clock() - started)
+        return WeChatCapture(directories: directories, batchMessageCounts: batchMessageCounts, messageCount: count, readSeconds: 0, captureSeconds: clock() - started,
+                             selfSender: selfSender)
     }
 }

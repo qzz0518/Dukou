@@ -210,7 +210,8 @@ final class WeChatQuickForward: ObservableObject {
                         let engine = try WeChatAccessibility(chat: preset.chat, cancellation: token) { [weak self] message in
                             DispatchQueue.main.async { self?.status = message }
                         }
-                        return try engine.capture(range: preset.range, ready: inbox.ready, shelfExtension: extensionURL)
+                        return try engine.capture(range: preset.range, ready: inbox.ready, shelfExtension: extensionURL,
+                                                  identifySelf: preset.htmlPreview)
                     })
                 }
             }
@@ -225,28 +226,24 @@ final class WeChatQuickForward: ObservableObject {
             guard !originals.isEmpty, originals.count == capture.directories.count, originals.count == counts.count,
                   originals.allSatisfy({ $0.items.count == 1 }) else { throw WeChatAutomationError.invalidArchive }
             let merging = preset.mergeArchives && originals.count > 1
-            status = merging ? L10n.text("正在合并聊天记录…") : L10n.text("正在整理文件名…")
+            let repackaging = merging || preset.htmlPreview
+            status = preset.htmlPreview ? L10n.text("正在生成 HTML 预览…")
+                : merging ? L10n.text("正在合并聊天记录…") : L10n.text("正在整理文件名…")
             let preparedDirectories: [URL] = try await withCheckedThrowingContinuation { continuation in
                 Self.worker.async {
                     continuation.resume(with: Result {
-                        if merging {
-                            return [try WeChatExportArchive.merge(originals, chat: preset.chat, fallbackCounts: counts, in: inbox,
-                                                                   exportedAt: requestedAt, checkCancellation: token.check)]
-                        }
-                        for (index, batch) in originals.enumerated() {
-                            try WeChatExportArchive.rename(batch, chat: preset.chat, fallbackCount: counts[index],
-                                                           part: originals.count > 1 ? index + 1 : nil,
-                                                           exportedAt: requestedAt, checkCancellation: token.check)
-                        }
-                        return originals.map(\.directory)
+                        try WeChatExportArchive.prepare(originals, chat: preset.chat, fallbackCounts: counts,
+                                                        mergeArchives: preset.mergeArchives, htmlPreview: preset.htmlPreview,
+                                                        in: inbox, selfSender: capture.selfSender, exportedAt: requestedAt,
+                                                        checkCancellation: token.check)
                     })
                 }
             }
             let batches = preparedDirectories.compactMap { reader.batch(at: $0) }
             guard batches.count == preparedDirectories.count, batches.allSatisfy({ $0.items.count == 1 }) else { throw WeChatAutomationError.invalidArchive }
-            // Once the combined ZIP exists, show that receipt on cancellation.
+            // Once the prepared ZIPs exist, show their receipts on cancellation.
             // The native inputs remain recoverable in history with their bytes.
-            if merging {
+            if repackaging {
                 for original in originals { try reader.markConsumed(itemIDs: Set(original.items.map(\.id)), in: original.id) }
             }
             try token.check()
@@ -277,7 +274,7 @@ final class WeChatQuickForward: ObservableObject {
             // Initialising only our own receipts above leaves other arrivals
             // untouched. When intake resumes those still receive their actions.
             var savedOutcome = true
-            for batch in merging ? originals + batches : batches {
+            for batch in repackaging ? originals + batches : batches {
                 do {
                     try reader.markConsumed(itemIDs: Set(batch.items.map(\.id)), in: batch.id)
                     try reader.recordOutcome(BatchOutcome(kind: .delivered, at: Date()), targetName: destinationName, for: batch.id)

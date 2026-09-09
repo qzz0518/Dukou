@@ -133,6 +133,7 @@ final class WeChatForwardTests: XCTestCase {
         let preferences = WeChatForwardPreferences.decode(legacy)
         XCTAssertNil(WeChatForwardPreset().destinationFolder)
         XCTAssertFalse(WeChatForwardPreset().mergeArchives)
+        XCTAssertFalse(WeChatForwardPreset().htmlPreview)
         XCTAssertEqual(preferences.draft.chat, "Work")
         XCTAssertEqual(preferences.draft.targetBundleIdentifier, "app.editor")
         XCTAssertEqual(preferences.draft.targetName, "Editor")
@@ -140,6 +141,7 @@ final class WeChatForwardTests: XCTestCase {
         XCTAssertTrue(preferences.draft.pastePath)
         XCTAssertNil(preferences.draft.destinationFolder)
         XCTAssertFalse(preferences.draft.mergeArchives)
+        XCTAssertFalse(preferences.draft.htmlPreview)
         let recent = try XCTUnwrap(preferences.recent.first)
         XCTAssertEqual(recent.chat, "Saved")
         XCTAssertEqual(recent.range, .init(unit: .days, value: 2))
@@ -147,6 +149,53 @@ final class WeChatForwardTests: XCTestCase {
         XCTAssertEqual(recent.lastUsed, Date(timeIntervalSinceReferenceDate: 12345))
         XCTAssertNil(recent.destinationFolder)
         XCTAssertFalse(recent.mergeArchives)
+        XCTAssertFalse(recent.htmlPreview)
+    }
+
+    func testLegacyMergePreferenceDoesNotEnableHTMLPreview() throws {
+        let legacy = Data(#"""
+        {
+          "draft": {"chat":"Merged", "range":{"unit":"messages","value":900}, "targetBundleIdentifier":"app.editor", "targetName":"Editor", "pastePath":false, "mergeArchives":true},
+          "recent": [{"chat":"Saved", "range":{"unit":"messages","value":200}, "targetBundleIdentifier":"app.notes", "targetName":"Notes", "pastePath":true, "mergeArchives":true, "lastUsed":12345}]
+        }
+        """#.utf8)
+        let preferences = WeChatForwardPreferences.decode(legacy)
+        XCTAssertEqual(preferences.draft.chat, "Merged")
+        XCTAssertTrue(preferences.draft.mergeArchives)
+        XCTAssertFalse(preferences.draft.htmlPreview)
+        let recent = try XCTUnwrap(preferences.recent.first)
+        XCTAssertEqual(recent.chat, "Saved")
+        XCTAssertTrue(recent.mergeArchives)
+        XCTAssertFalse(recent.htmlPreview)
+        XCTAssertTrue(recent.pastePath)
+    }
+
+    func testHTMLPreviewIsIndependentOfMergingAndRememberedPerChat() throws {
+        let merged = WeChatForwardPreset(chat: "Merged preview", targetBundleIdentifier: "app.editor", targetName: "Editor", mergeArchives: true, htmlPreview: true)
+        let separate = WeChatForwardPreset(chat: "Separate preview", targetBundleIdentifier: "app.notes", targetName: "Notes", htmlPreview: true)
+        let plain = WeChatForwardPreset(chat: "Plain export", targetBundleIdentifier: "app.editor", targetName: "Editor")
+        var preferences = WeChatForwardPreferences()
+        preferences.recordSuccess(merged)
+        preferences.recordSuccess(separate)
+        preferences.recordSuccess(plain)
+        var loaded = WeChatForwardPreferences.decode(try JSONEncoder().encode(preferences))
+        XCTAssertFalse(loaded.draft.htmlPreview)
+        XCTAssertEqual(loaded.recent.first(where: { $0.chat == merged.chat })?.htmlPreview, true)
+        XCTAssertEqual(loaded.recent.first(where: { $0.chat == merged.chat })?.mergeArchives, true)
+        XCTAssertEqual(loaded.recent.first(where: { $0.chat == separate.chat })?.htmlPreview, true)
+        XCTAssertEqual(loaded.recent.first(where: { $0.chat == separate.chat })?.mergeArchives, false)
+        XCTAssertEqual(loaded.recent.first(where: { $0.chat == plain.chat })?.htmlPreview, false)
+
+        var updated = merged
+        updated.htmlPreview = false
+        loaded.recordSuccess(updated)
+        let reloaded = WeChatForwardPreferences.decode(try JSONEncoder().encode(loaded))
+        XCTAssertEqual(reloaded.recent.count, 3)
+        XCTAssertEqual(reloaded.draft.chat, merged.chat)
+        XCTAssertTrue(reloaded.draft.mergeArchives)
+        XCTAssertFalse(reloaded.draft.htmlPreview)
+        XCTAssertEqual(reloaded.recent.first?.htmlPreview, false)
+        XCTAssertEqual(reloaded.recent.first(where: { $0.chat == separate.chat })?.htmlPreview, true)
     }
 
     func testMergePreferenceIsRememberedPerChatAndReplacedOnSuccess() throws {
@@ -192,12 +241,13 @@ final class WeChatForwardTests: XCTestCase {
     func testFolderPresetRoundTripsAndRemembersSuccessfulFolderForTheSameChat() throws {
         let folder = URL(fileURLWithPath: "/tmp/群聊 exports", isDirectory: true)
         let preset = WeChatForwardPreset(chat: "Example（500）", targetBundleIdentifier: "app.old", targetName: "Old",
-                                         destinationFolder: folder, pastePath: true, mergeArchives: true)
+                                         destinationFolder: folder, pastePath: true, mergeArchives: true, htmlPreview: true)
         XCTAssertEqual(preset.destinationFolder, folder)
         XCTAssertEqual(preset.targetBundleIdentifier, "")
         XCTAssertEqual(preset.targetName, "")
         XCTAssertFalse(preset.pastePath)
         XCTAssertTrue(preset.mergeArchives)
+        XCTAssertTrue(preset.htmlPreview)
         var preferences = WeChatForwardPreferences()
         preferences.recordSuccess(.init(chat: "Example", targetBundleIdentifier: "app.old", targetName: "Old"))
         preferences.recordSuccess(preset, at: Date(timeIntervalSinceReferenceDate: 12345))
@@ -209,6 +259,7 @@ final class WeChatForwardTests: XCTestCase {
         XCTAssertEqual(loaded.recent.first?.destinationFolder, folder)
         XCTAssertFalse(loaded.draft.pastePath)
         XCTAssertTrue(loaded.draft.mergeArchives)
+        XCTAssertTrue(loaded.draft.htmlPreview)
     }
 
     func testDecodingFolderOverridesStaleApplicationAndPathMode() throws {
@@ -221,6 +272,7 @@ final class WeChatForwardTests: XCTestCase {
         XCTAssertEqual(preset.targetName, "")
         XCTAssertFalse(preset.pastePath)
         XCTAssertFalse(preset.mergeArchives)
+        XCTAssertFalse(preset.htmlPreview)
     }
 
     func testExplicitNullFolderStillDecodesAsAnApplicationPreset() throws {

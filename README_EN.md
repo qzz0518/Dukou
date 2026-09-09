@@ -45,13 +45,14 @@ One step further, Quick WeChat forward and Quick Moments forward (experimental) 
 - **Attached prompt.** When sending to Codex, Claude, a custom app or through a quick forward, a prompt of your own is pasted first, then the files (for terminal-like apps it is folded in ahead of the paths). One summary prompt comes built in; keep up to three and switch between them.
 - **Failures always have a way out.** App not installed, permission missing, app never came forward: the files are already on the clipboard, and the message offers to put them on the shelf. Success shows nothing.
 - **Quick WeChat forward (experimental).** Name a group and a message count, and Dukou does the selecting and merge-forwarding in WeChat, then pastes the ZIP into the app you are using or saves it to a folder you pick. No cap on the count; about 5 seconds per 100 messages, exported in batches past 100, and batches can be combined into a single ZIP. Files are named by group, time range and count, and a folder destination opens after saving. A status capsule in the corner reports progress; ESC or Cancel stops it at any time.
+- **HTML chat preview.** Enable HTML preview in Quick WeChat Forward to add `index.html` at the ZIP root. Extract the entire ZIP, then double-click the page to browse chat bubbles offline, search names and messages, filter by date, enlarge images, play browser-supported audio and video, or open the original attachments. Dukou reads the current WeChat account nickname during export and places your messages on the right when it exactly matches a sender in the records. You can also choose a sender in the top-right menu; avatar initials come from nicknames. Merged ZIPs have one complete timeline; separate ZIPs each have their own preview.
 - **Quick Moments forward (experimental).** Choose how many recent posts to export, with photos and videos as separate options. Authors, the times WeChat shows and the full text go into a chronological TXT, with the media in a `media/` folder inside the same ZIP, and the result pastes into an app or saves to a folder just the same. Photos and videos have to be opened and downloaded one by one, which is slow, so leave the computer alone while it runs; ESC stops it, and anything that could not be read is marked in the TXT.
 - **Safe updates.** Sparkle checks for signed releases and downloads only the one you confirm, from GitHub Releases.
 - **Simplified Chinese and English** throughout, share-menu entries included.
 
 ## What it does not do
 
-- It does not read WeChat databases, and it builds no chat preview or index. The chat history is the ZIP WeChat exported; Dukou reads only its dates and counts, to name the file. Moments are read only when you start a Moments forward, and what it reads goes into a ZIP of its own.
+- It does not read WeChat databases. Chat content comes from WeChat's native ZIP; Quick Forward reads dates and counts for naming and generates an offline page only when HTML preview is enabled. Moments are read only when you start a Moments forward, and what it reads goes into a ZIP of its own.
 - It does not use the network, except to check for updates. The five entry extensions are sandboxed with no network permission, and the app's only request is fetching update information.
 - It does not use private APIs. Bringing an app forward and pressing ⌘V for you both go through documented system interfaces, behind a permission you grant.
 
@@ -84,7 +85,7 @@ Download the latest `Dukou-*.dmg` from [Releases](https://github.com/qzz0518/Duk
 
 | Data | What Dukou does with it |
 |---|---|
-| The ZIP WeChat exports | Kept as is in Dukou's own container; a quick forward reads its dates and counts for naming, and can combine batches into one ZIP |
+| The ZIP WeChat exports | Kept as is in Dukou's own container; Quick Forward reads dates and counts for naming, can combine batches or generate an optional offline HTML preview, and preserves the original text and attachments |
 | Moments text and media | Read only when you start a Moments forward, then packaged as a TXT and media ZIP under the same retention as chat history. The clipboard is borrowed while media is collected and restored if nothing newer was copied |
 | Clipboard | Files, the attached prompt, or the quoted paths a terminal asked for |
 | Network | Software updates only: signed update information is fetched periodically, and only the release you confirm is downloaded, from GitHub Releases |

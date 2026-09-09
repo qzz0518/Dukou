@@ -340,6 +340,9 @@
 "把选中的 Prompt 一起粘贴。" = "Include the selected prompt.";
 "执行时请勿操作电脑，按 ESC 中断。" = "Do not use the computer during a run. ESC stops it.";
 "合并为一个 ZIP" = "Merge into one ZIP";
+"HTML 预览" = "HTML preview";
+"解压后打开 index.html，按时间线查看聊天记录。" = "Extract the ZIP and open index.html to browse the chat timeline.";
+"正在生成 HTML 预览…" = "Generating HTML preview…";
 "最近 %@ 条消息" = "Last %@ messages";
 "条数过大，请输入更小的数字。" = "This number is too large to process. Enter a smaller number.";
 "正在合并聊天记录…" = "Merging chat records…";
