@@ -83,6 +83,14 @@ Download the latest `Dukou-*.dmg` from [Releases](https://github.com/qzz0518/Duk
 2. Grant Accessibility if you want automated pasting. Skipping is fine; Dukou guides you again the first time a forward fails.
 3. In WeChat, select messages → forward to other apps → pick the entry.
 
+## Known issue
+
+**On some WeChat accounts, Quick WeChat forward and Quick Moments forward cannot read WeChat's interface and report "A unique matching group was not found".** Manual multi-select and forwarding to Dukou's entries are unaffected.
+
+- Symptom: Accessibility is granted, yet WeChat exposes only the window shell (the window, its three traffic-light buttons and the menu bar). The session list, chat title and messages are absent. Reinstalling, re-granting the permission, or changing macOS or WeChat builds does not help.
+- Cause: since WeChat 4.1, WeChat itself decides whether to expose its controls, and that state follows the WeChat account rather than Dukou or the system. On the same Mac with the same WeChat build, some accounts have a control tree and some do not; the Windows WeChat automation community has documented the same per-account split ([pywechat #256](https://github.com/Hello-Mr-Crab/pywechat/issues/256), [#276](https://github.com/Hello-Mr-Crab/pywechat/issues/276)).
+- Status: looking for an approach that does not depend on the control tree.
+
 ## Privacy
 
 | Data | What Dukou does with it |
