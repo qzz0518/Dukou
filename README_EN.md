@@ -38,25 +38,25 @@ One step further, Quick WeChat forward and Quick Moments forward (experimental) 
 
 ## Features
 
-- **The extension has no interface.** Pick an entry and nothing appears on screen; the files just land. A batch either arrives whole or not at all.
-- **Entries you can switch off.** Each entry is a separate system extension, toggled from Settings → Entries rather than three panes deep in System Settings.
-- **A Dropover-style shelf.** A floating square that never takes focus, docked to the corner you chose. Drag out and get accepted, and it is consumed; drag everything out and it disappears. Nothing is deleted; the files move to History.
-- **History that cleans itself.** Every batch records its entry, its outcome and its size. Anything not on the shelf is moved to the Trash after the retention window (7 days by default), and can be put back on the shelf at any time.
-- **Send to any app.** The Send to Custom list is kept in Settings, and the same list backs the Send to ▸ menus on the shelf and in History. Terminal-like apps can receive quoted file paths instead of files.
-- **Attached prompt.** When sending to Codex, Claude, a custom app or through a quick forward, a prompt of your own is pasted first, then the files (for terminal-like apps it is folded in ahead of the paths). One summary prompt comes built in; keep up to three and switch between them.
-- **Failures always have a way out.** App not installed, permission missing, app never came forward: the files are already on the clipboard, and the message offers to put them on the shelf. Success shows nothing.
-- **Quick WeChat forward (experimental).** Name a group and a message count, and Dukou does the selecting and merge-forwarding in WeChat, then pastes the ZIP into the app you are using or saves it to a folder you pick. No cap on the count; about 5 seconds per 100 messages, exported in batches past 100, and batches can be combined into a single ZIP. Files are named by group, time range and count, and a folder destination opens after saving. A status capsule in the corner reports progress; ESC or Cancel stops it at any time.
-- **HTML chat preview.** Enable HTML preview in Quick WeChat Forward to add `index.html` at the ZIP root. Extract the entire ZIP, then double-click the page to browse chat bubbles offline, search names and messages, filter by date, enlarge images, play browser-supported audio and video, or open the original attachments. Dukou reads the current WeChat account nickname during export and places your messages on the right when it exactly matches a sender in the records. You can also choose a sender in the top-right menu; avatar initials come from nicknames. Merged ZIPs have one complete timeline; separate ZIPs each have their own preview.
-- **Quick Moments forward (experimental).** Choose how many recent posts to export, with photos and videos as separate options. Authors, the times WeChat shows and the full text go into a chronological TXT, with the media in a `media/` folder inside the same ZIP, and the result pastes into an app or saves to a folder just the same. Photos and videos have to be opened and downloaded one by one, which is slow, so leave the computer alone while it runs; ESC stops it, and anything that could not be read is marked in the TXT.
-- **Backups on your own disk.** Point a quick forward at a folder and you have a backup: group ZIPs named by group, time range and count, Moments packed on their own, and an offline page to browse if HTML preview is on. Every step is one you could do by hand in WeChat — you just do not have to.
-- **Safe updates.** Sparkle checks for signed releases and downloads only the one you confirm, from GitHub Releases.
-- **Simplified Chinese and English** throughout, share-menu entries included.
+- **No interface in the extension.** Pick an entry and the files just land; nothing appears on screen.
+- **Entries you can switch off.** Each entry is a separate system extension, toggled in Settings → Entries.
+- **A shelf.** A floating square in a screen corner that never takes focus; drag out and it is consumed, the files move to History.
+- **History that cleans itself.** Batches older than the retention window (7 days by default) go to the Trash and can be put back on the shelf.
+- **Send to any app.** Keep your own list under Send to Custom; terminal-like apps can receive file paths instead.
+- **Attached prompt.** A prompt of your own is pasted before the files when sending to Codex, Claude or a custom app; keep up to three.
+- **Failures have a way out.** App missing, permission missing or app not in front: the files are already on the clipboard and can go to the shelf.
+- **Quick WeChat forward (experimental).** Name a group and a count; Dukou selects and merge-forwards in WeChat, then pastes the ZIP into the current app or saves it to a folder. Batches past 100 can be combined into one ZIP; ESC stops it.
+- **HTML chat preview.** An `index.html` inside the ZIP for browsing the chat offline: search, filter by date, view images, play audio and video.
+- **Quick Moments forward (experimental).** Export a number of recent posts as a time-ordered TXT with the photos and videos in the same ZIP. Downloading is slow; ESC stops it.
+- **Backups on your own disk.** Save a quick forward to a folder and you have a backup, named by chat, time range and count.
+- **Safe updates.** Sparkle checks for signed releases and downloads only from GitHub Releases.
+- **Simplified Chinese and English** throughout.
 
 ## What it does not do
 
-- It does not read WeChat databases, decrypt anything, inject into WeChat or modify it. Chat content comes from WeChat's native ZIP; Quick Forward reads dates and counts for naming and generates an offline page only when HTML preview is enabled. Moments are read only when you start a Moments forward, and what it reads goes into a ZIP of its own.
-- It does not use the network, except to check for updates. The five entry extensions are sandboxed with no network permission, and the app's only request is fetching update information.
-- It does not use private APIs. Bringing an app forward and pressing ⌘V for you both go through documented system interfaces, behind a permission you grant.
+- No database reads, no decryption, no injection, no changes to WeChat. Chat content comes only from the ZIP WeChat itself exports.
+- No network, except checking for updates. All five extensions are sandboxed without network permission.
+- No private APIs. Switching apps and pressing ⌘V for you go through public system interfaces, behind a permission you grant.
 
 ## Getting started
 
@@ -95,10 +95,10 @@ Download the latest `Dukou-*.dmg` from [Releases](https://github.com/qzz0518/Duk
 
 | Data | What Dukou does with it |
 |---|---|
-| The ZIP WeChat exports | Kept as is in Dukou's own container; Quick Forward reads dates and counts for naming, can combine batches or generate an optional offline HTML preview, and preserves the original text and attachments |
-| Moments text and media | Read only when you start a Moments forward, then packaged as a TXT and media ZIP under the same retention as chat history. The clipboard is borrowed while media is collected and restored if nothing newer was copied |
-| Clipboard | Files, the attached prompt, or the quoted paths a terminal asked for |
-| Network | Software updates only: signed update information is fetched periodically, and only the release you confirm is downloaded, from GitHub Releases |
+| The ZIP WeChat exports | Kept as is in Dukou's own container; only dates and counts are read, for naming |
+| Moments text and media | Read only when you start a Moments forward, packed into a ZIP under the same retention as chats |
+| Clipboard | Files, the attached prompt, or the paths a terminal asked for |
+| Network | Software updates only, downloaded only from GitHub Releases |
 | Sandbox | All five extensions run sandboxed |
 
 ## Contributing
