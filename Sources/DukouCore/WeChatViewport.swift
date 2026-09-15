@@ -42,27 +42,41 @@ public struct WeChatViewport: Sendable {
         firstOrdinal = best.base; lastDisplacement = best.shift; rows = next
     }
 
+    /// Rebind around a row found without reading it: the list's keyboard row,
+    /// which neither a wheel scroll nor a share sheet moves. Content cannot
+    /// place a run of identical labels — every photo is 「图片」, and a list
+    /// that scrolled one photo reads exactly like one that did not — so this
+    /// takes the reading that row proves, and still refuses one the rows both
+    /// snapshots share contradict.
+    public mutating func pin(_ next: [WeChatViewportRow], index: Int, ordinal: Int, afterLeavingSelection: Bool = false) throws {
+        guard next.indices.contains(index), self.index(of: ordinal) != nil,
+              let pinned = overlap(next, base: ordinal + index, afterLeavingSelection: afterLeavingSelection) else { throw WeChatReadError.transcriptMismatch }
+        firstOrdinal = pinned.base; lastDisplacement = pinned.shift; rows = next
+    }
+
     private typealias Overlap = (base: Int, count: Int, shift: Double, rigid: Bool)
 
     private func overlaps(_ next: [WeChatViewportRow], afterLeavingSelection: Bool = false) -> [Overlap] {
         guard !rows.isEmpty, !next.isEmpty else { return [] }
-        var candidates: [Overlap] = []
-        for base in (firstOrdinal - rows.count + 1)...(firstOrdinal + next.count - 1) {
-            var shifts: [Double] = [], valid = true, sameHeights = true
-            for (j, row) in next.enumerated() {
-                let i = firstOrdinal - (base - j)
-                guard rows.indices.contains(i) else { continue }
-                let sameText = !row.text.isEmpty && (rows[i].text == row.text || (afterLeavingSelection && rows[i].text.hasSuffix(" " + row.text)))
-                guard sameText else { valid = false; break }
-                sameHeights = sameHeights && abs(rows[i].height - row.height) < 3
-                shifts.append(row.y - rows[i].y)
-            }
-            guard valid, !shifts.isEmpty else { continue }
-            let shift = shifts.sorted()[shifts.count / 2]
-            let rigid = sameHeights && shifts.allSatisfy({ abs($0 - shift) < 3 })
-            candidates.append((base, shifts.count, shift, rigid))
+        return ((firstOrdinal - rows.count + 1)...(firstOrdinal + next.count - 1)).compactMap {
+            overlap(next, base: $0, afterLeavingSelection: afterLeavingSelection)
         }
-        return candidates
+    }
+
+    private func overlap(_ next: [WeChatViewportRow], base: Int, afterLeavingSelection: Bool) -> Overlap? {
+        var shifts: [Double] = [], sameHeights = true
+        for (j, row) in next.enumerated() {
+            let i = firstOrdinal - (base - j)
+            guard rows.indices.contains(i) else { continue }
+            let sameText = !row.text.isEmpty && (rows[i].text == row.text || (afterLeavingSelection && rows[i].text.hasSuffix(" " + row.text)))
+            guard sameText else { return nil }
+            sameHeights = sameHeights && abs(rows[i].height - row.height) < 3
+            shifts.append(row.y - rows[i].y)
+        }
+        guard !shifts.isEmpty else { return nil }
+        let shift = shifts.sorted()[shifts.count / 2]
+        let rigid = sameHeights && shifts.allSatisfy({ abs($0 - shift) < 3 })
+        return (base, shifts.count, shift, rigid)
     }
 
     private func nearest(_ candidates: [Overlap]) -> Overlap? {

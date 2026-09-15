@@ -146,6 +146,7 @@ final class WeChatAccessibility {
     private var scanTruncated = false
     private var controlFailure: [String: Any]?
     private var resumedBatches = 0
+    private var keyboardPins: [String: Int] = [:]
     /// What the prefetch pass cost and what it loaded, for diagnostics only.
     private var prefetchSeconds = 0.0
     private var prefetchRows = 0
@@ -687,6 +688,8 @@ final class WeChatAccessibility {
         let viewport: WeChatViewport
         let window: AXUIElement
         let windowRect: CGRect
+        /// The ordinal the keyboard row was left on, when this batch walked there.
+        let keyboardOrdinal: Int?
     }
     private enum SelectionStart { case latest, resume(Checkpoint, ordinal: Int) }
 
@@ -717,9 +720,21 @@ final class WeChatAccessibility {
         throw WeChatAutomationError.selection
     }
 
-    private func checkpoint(_ tracked: WeChatViewport, page: Page) throws -> Checkpoint {
+    private func checkpoint(_ tracked: WeChatViewport, page: Page, keyboardOrdinal: Int? = nil) throws -> Checkpoint {
         let owner = try window(of: page)
-        return Checkpoint(viewport: tracked, window: owner.element, windowRect: owner.rect)
+        return Checkpoint(viewport: tracked, window: owner.element, windowRect: owner.rect, keyboardOrdinal: keyboardOrdinal)
+    }
+
+    /// Rebinds `tracked` by the keyboard row sitting on `ordinal`. A wheel
+    /// scroll and a share sheet both leave that row where it was, and unlike a
+    /// label it tells one photo from the next. False when the row is off screen
+    /// or the shared rows contradict it; the caller then matches content.
+    private func pinKeyboardRow(_ tracked: inout WeChatViewport, page: Page, ordinal: Int?, afterLeavingSelection: Bool = false) -> Bool {
+        guard let ordinal, let focused = focusedNode(), focused.id == "chat_bubble_item_view",
+              let index = page.rows.firstIndex(where: { CFEqual($0.element, focused.element) && $0.strings == focused.strings }) else { return false }
+        do { try tracked.pin(page.data, index: index, ordinal: ordinal, afterLeavingSelection: afterLeavingSelection) } catch { return false }
+        keyboardPins[phase, default: 0] += 1
+        return true
     }
 
     private func observe(_ label: String, _ page: Page) {
@@ -927,7 +942,7 @@ final class WeChatAccessibility {
     /// bubble; non-message rows (timestamps/system notices) are not counted.
     /// Wait only until that particular key has changed focus, never a fixed
     /// gesture delay. Count message rows without interpreting their contents.
-    private func keyboardRange(from start: Page, limit: Int) throws -> (Page, WeChatViewport)? {
+    private func keyboardRange(from start: Page, limit: Int, endpointFocus: Bool = false) throws -> (Page, WeChatViewport)? {
         guard try focusList(start), var first = focusedNode() else { return nil }
         steps.append(["kind": "keyboard-setup", "focusID": first.id, "role": first.role,
                       "selected": first.selected,
@@ -942,6 +957,16 @@ final class WeChatAccessibility {
            let anchorIndex = start.list.children.firstIndex(where: { CFEqual($0, anchor.element) }),
            let focusIndex = start.list.children.firstIndex(where: { CFEqual($0, first.element) }),
            !first.rect.intersection(start.list.rect).isNull, abs(anchorIndex - focusIndex) <= 20 {
+            // A resumed batch knows where that row must be: the previous
+            // endpoint, just below this anchor with only separators between.
+            // Anywhere else the anchor is not the boundary, and aligning to it
+            // would skip or repeat messages without a word.
+            if endpointFocus {
+                guard first.id == "chat_bubble_item_view", focusIndex > anchorIndex,
+                      start.list.children[(anchorIndex + 1)..<focusIndex].allSatisfy({ WCNode($0).id != "chat_bubble_item_view" }) else {
+                    throw WeChatAutomationError.selection
+                }
+            }
             for _ in 0..<abs(anchorIndex - focusIndex) {
                 try navigationKey(anchorIndex < focusIndex ? 126 : 125)
                 let deadline = clock() + 0.5
@@ -1012,10 +1037,14 @@ final class WeChatAccessibility {
     private func selectBatch(limit: Int, start: SelectionStart, latestPage: Page? = nil) throws -> Selection {
         phase = "select-anchor"
         let anchorIndex: Int, anchorPage: Page
+        var resumedFromKeyboard = false
         switch start {
         case .resume(let saved, let ordinal):
             phase = ordinal == 0 ? "time-boundary-anchor" : "next-batch-anchor"
             var page = try stablePage(), tracked = saved.viewport
+            // Only a focused list reports its keyboard row, and the share sheet
+            // may have taken focus with it. Focusing moves no row on 4.1.13.
+            if saved.keyboardOrdinal != nil, try focusList(page) { page = try stablePage() }
             let owner = try window(of: page)
             observe("resume", page)
             let stillSelecting = page.rows.allSatisfy { $0.role == "AXCheckBox" }
@@ -1028,6 +1057,15 @@ final class WeChatAccessibility {
             // visible rows. Reuse the remaining ordered context to continue
             // from the saved boundary, not from the current newest message.
             do { try tracked.resume(page.data, afterLeavingSelection: !stillSelecting) } catch { throw WeChatAutomationError.selection }
+            // The previous batch left the keyboard row on its endpoint, one
+            // message newer than this anchor. After sharing every photo reads
+            // 图片 whoever sent it, and a scroll step over photos reads the same
+            // as none; that row does not. The share itself moves nothing, so
+            // here the row and the content must agree — if they do not, one of
+            // those two premises is gone and neither can be trusted.
+            var proof = saved.viewport
+            var pinned = pinKeyboardRow(&proof, page: page, ordinal: saved.keyboardOrdinal, afterLeavingSelection: !stillSelecting)
+            guard !pinned || proof.firstOrdinal == tracked.firstOrdinal else { throw WeChatAutomationError.selection }
             if !stillSelecting { ownsSelection = false }
             var budget = NavigationBudget(deadline: clock() + 15, maximumSteps: 60)
             while true {
@@ -1047,15 +1085,21 @@ final class WeChatAccessibility {
                         if stillSelecting { (anchorIndex, anchorPage) = try leaveSelection(page: page, index: index) }
                         else { anchorIndex = index; anchorPage = page }
                         resumedBatches += 1
+                        resumedFromKeyboard = pinned && ordinal > 0
                         break
                     }
                 }
                 let delta: Int32
                 if let index = tracked.index(of: ordinal) {
                     delta = page.rows[index].rect.midY < page.list.rect.midY ? 60 : -60
-                } else { delta = ordinal > tracked.firstOrdinal ? 250 : -250 }
+                } else {
+                    // Small enough steps that the keyboard row stays on screen.
+                    let step: Int32 = pinned ? 60 : 250
+                    delta = ordinal > tracked.firstOrdinal ? step : -step
+                }
                 try scroll(page.list.element, delta: delta)
                 page = try stablePage()
+                if pinKeyboardRow(&tracked, page: page, ordinal: saved.keyboardOrdinal) { pinned = true; continue }
                 do { try tracked.advance(page.data, older: delta > 0) } catch { throw WeChatAutomationError.selection }
             }
         case .latest:
@@ -1081,7 +1125,7 @@ final class WeChatAccessibility {
         var tracked = WeChatViewport(rows: page.data, anchorIndex: index)
         if limit == 1 { return Selection(count: 1, checkpoint: try checkpoint(tracked, page: page)) }
         var usedKeyboard = false
-        if let (arrived, positioned) = try keyboardRange(from: page, limit: limit) {
+        if let (arrived, positioned) = try keyboardRange(from: page, limit: limit, endpointFocus: resumedFromKeyboard) {
             page = arrived; tracked = positioned; usedKeyboard = true
         } else {
             // Setting AXFocused may itself scroll in another Qt version.
@@ -1097,6 +1141,9 @@ final class WeChatAccessibility {
         // Backed off by half whenever a step outruns the viewport tracker.
         var reachFactor = 1.0, overshoots = 0, healthySteps = 0
         var budget = NavigationBudget(deadline: clock() + 35, maximumSteps: 120)
+        func capped(_ button: WCNode?) -> Bool {
+            button?.strings.contains { $0.filter { !$0.isWhitespace } == "最多选择100条" } == true
+        }
         while true {
             try budget.observe(page)
             let tallest = page.rows.map(\.rect.height).max() ?? page.list.rect.height
@@ -1125,15 +1172,31 @@ final class WeChatAccessibility {
                 // small inset as the wheel locator before pressing range.
                 if tracked.canSelectRange(endingAt: limit - 1, listTop: page.list.rect.minY,
                                           listHeight: page.list.rect.height, keyboardVerified: usedKeyboard),
-                   let button = try rangeControl(), button.strings.contains("选择到这里") {
-                    observe("before-range", page)
-                    try press(button)
-                    rangeClicks += 1
-                    page = try stablePage()
-                    observe("after-range", page)
-                    do { try tracked.resume(page.data) } catch { throw WeChatAutomationError.selection }
-                    guard let endpoint = tracked.index(of: limit - 1), page.rows[endpoint].selected else { throw WeChatAutomationError.selection }
-                    return Selection(count: limit, checkpoint: try checkpoint(tracked, page: page))
+                   let button = try rangeControl() {
+                    // With the row above cut by the top edge, WeChat counts from
+                    // the row taken as the endpoint and still finds more than
+                    // this batch. The one-point nudge below cannot change that;
+                    // it used to run the budget out a point at a time. A row
+                    // above that is whole is WeChat's start instead, and the
+                    // nudge does fix that.
+                    if capped(button) {
+                        if target == 0 || page.rows[target - 1].rect.minY < page.list.rect.minY {
+                            try pause(0.15)
+                            if capped(try rangeControl()) { observe("range-cap", page); throw WeChatAutomationError.selection }
+                            continue
+                        }
+                    } else if button.strings.contains("选择到这里") {
+                        observe("before-range", page)
+                        try press(button)
+                        rangeClicks += 1
+                        page = try stablePage()
+                        observe("after-range", page)
+                        if !pinKeyboardRow(&tracked, page: page, ordinal: usedKeyboard ? limit - 1 : nil) {
+                            do { try tracked.resume(page.data) } catch { throw WeChatAutomationError.selection }
+                        }
+                        guard let endpoint = tracked.index(of: limit - 1), page.rows[endpoint].selected else { throw WeChatAutomationError.selection }
+                        return Selection(count: limit, checkpoint: try checkpoint(tracked, page: page, keyboardOrdinal: usedKeyboard ? limit - 1 : nil))
+                    }
                 }
                 let distance = page.list.rect.minY + 8 - row.rect.minY
                 let amount = Int((distance / max(1, gain)).rounded())
@@ -1144,20 +1207,25 @@ final class WeChatAccessibility {
             page = try stablePage()
             unchanged = page.signature == before.signature ? unchanged + 1 : 0
             guard unchanged < 3 else { throw WeChatAutomationError.historyIncomplete }
-            do { try tracked.advance(page.data, older: delta > 0) }
-            catch {
-                // The step outran the tracker: nothing in the new view is also
-                // in the old one. Scrolling back the same amount returns to a
-                // view the tracker still recognises, so a step that reached too
-                // far costs one extra step instead of the whole selection.
-                guard overshoots < 2 else { throw WeChatAutomationError.selection }
-                overshoots += 1
-                reachFactor = max(0.4, reachFactor / 2)
-                try scroll(page.list.element, delta: -delta)
-                page = try stablePage()
-                do { try tracked.advance(page.data, older: delta < 0) }
-                catch { throw WeChatAutomationError.selection }
-                continue
+            // The keyboard row is this batch's endpoint. A burst of photos from
+            // one sender reads the same whether the nudge moved the list or not,
+            // and taking it as unmoved counted the batch past a hundred.
+            if !pinKeyboardRow(&tracked, page: page, ordinal: usedKeyboard ? limit - 1 : nil) {
+                do { try tracked.advance(page.data, older: delta > 0) }
+                catch {
+                    // The step outran the tracker: nothing in the new view is also
+                    // in the old one. Scrolling back the same amount returns to a
+                    // view the tracker still recognises, so a step that reached too
+                    // far costs one extra step instead of the whole selection.
+                    guard overshoots < 2 else { throw WeChatAutomationError.selection }
+                    overshoots += 1
+                    reachFactor = max(0.4, reachFactor / 2)
+                    try scroll(page.list.element, delta: -delta)
+                    page = try stablePage()
+                    do { try tracked.advance(page.data, older: delta < 0) }
+                    catch { throw WeChatAutomationError.selection }
+                    continue
+                }
             }
             let measured = abs(tracked.lastDisplacement / Double(delta))
             if steps.count < 200 {
@@ -1405,9 +1473,9 @@ final class WeChatAccessibility {
     }
 
     private func diagnostics(started: Double, outcome: String, count: Int) {
-        let report: [String: Any] = ["schemaVersion": 5, "strategy": "native-keyboard-range", "at": ISO8601DateFormatter().string(from: Date()),
+        let report: [String: Any] = ["schemaVersion": 6, "strategy": "native-keyboard-range", "at": ISO8601DateFormatter().string(from: Date()),
             "outcome": outcome, "phase": phase, "seconds": clock() - started, "messageCount": count,
-            "navigationKeys": navigationKeys, "keyboardMessages": keyboardMessages, "scrolls": scrollCount, "scrollSeconds": scrollSeconds, "scanSeconds": scanSeconds, "scanCalls": scanCalls, "stableSeconds": stableSeconds, "exportSeconds": exportSeconds, "prefetchSeconds": prefetchSeconds, "prefetchRows": prefetchRows, "prefetchLoaded": prefetchLoaded, "scrollsByPhase": scrollsByPhase, "steps": steps, "clicks": clickCount, "rangeClicks": rangeClicks, "shiftRangeClicks": shiftRangeClicks, "exports": exportCount, "resumedBatches": resumedBatches,
+            "navigationKeys": navigationKeys, "keyboardMessages": keyboardMessages, "scrolls": scrollCount, "scrollSeconds": scrollSeconds, "scanSeconds": scanSeconds, "scanCalls": scanCalls, "stableSeconds": stableSeconds, "exportSeconds": exportSeconds, "prefetchSeconds": prefetchSeconds, "prefetchRows": prefetchRows, "prefetchLoaded": prefetchLoaded, "scrollsByPhase": scrollsByPhase, "steps": steps, "clicks": clickCount, "rangeClicks": rangeClicks, "shiftRangeClicks": shiftRangeClicks, "exports": exportCount, "resumedBatches": resumedBatches, "keyboardPins": keyboardPins,
             "snapshots": snapshots, "receiptReadRetries": receiptReadRetries,
             "locator": locator, "visualMilliseconds": visualMilliseconds, "lastNodeCount": lastNodeCount,
             "scanTruncated": scanTruncated, "controlFailure": controlFailure ?? [:],

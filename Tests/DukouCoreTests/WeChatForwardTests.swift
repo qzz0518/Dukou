@@ -554,6 +554,46 @@ final class WeChatForwardTests: XCTestCase {
         XCTAssertThrowsError(try WeChatMessageContext.resolve(selected: selected, target: 2, normal: ["无关", "重复", "结束"]))
         XCTAssertEqual(try WeChatMessageContext.resolve(selected: ["甲 图片", "甲 图片", "甲 图片"], target: 1, normal: ["图片", "图片", "图片", "图片"]), 1)
     }
+
+    func testKeyboardRowPinsTheEndpointNudgeThroughABurstOfPhotosFromOneSender() throws {
+        func photo(_ y: Double) -> WeChatViewportRow { .init(text: "甲 图片", y: y, height: 240) }
+        // Up left ordinal 99 flush against the top edge. The nudge off that
+        // edge moves 6 points and uncovers a sliver of ordinal 100.
+        var viewport = WeChatViewport(rows: [photo(-24), photo(216), photo(456)], anchorIndex: 0, anchorOrdinal: 99)
+        try viewport.pin([photo(-258), photo(-18), photo(222), photo(462)], index: 1, ordinal: 99)
+        XCTAssertEqual(viewport.firstOrdinal, 100)
+        XCTAssertEqual(viewport.lastDisplacement, 6)
+        XCTAssertTrue(viewport.canSelectRange(endingAt: 99, listTop: -24, listHeight: 613, keyboardVerified: true))
+    }
+
+    func testKeyboardRowPinsTheNextBatchAnchorAmongPhotosThatNoLongerNameTheirSender() throws {
+        func photos(_ ys: [Double]) -> [WeChatViewportRow] { ys.map { .init(text: "图片", y: $0, height: 240) } }
+        var viewport = WeChatViewport(rows: [
+            .init(text: "乙 图片", y: -90, height: 240), .init(text: "丙 图片", y: 150, height: 240), .init(text: "甲 图片", y: 390, height: 240),
+        ], anchorIndex: 2, anchorOrdinal: 99)
+        // Sharing leaves the list where it was; outside multi-select all read 图片.
+        try viewport.pin(photos([-90, 150, 390]), index: 2, ordinal: 99, afterLeavingSelection: true)
+        XCTAssertEqual(viewport.firstOrdinal, 101)
+        XCTAssertEqual(viewport.lastDisplacement, 0)
+        // One wheel step uncovers another photo, which content alone reads as no movement.
+        try viewport.pin(photos([-246, -6, 234, 474]), index: 3, ordinal: 99)
+        XCTAssertEqual(viewport.firstOrdinal, 102)
+        XCTAssertEqual(viewport.index(of: 100), 2)
+        XCTAssertEqual(viewport.lastDisplacement, 84)
+    }
+
+    func testPinRefusesAKeyboardRowTheSharedRowsContradictOrThatWasNeverTracked() throws {
+        func row(_ text: String, _ y: Double) -> WeChatViewportRow { .init(text: text, y: y, height: 100) }
+        var viewport = WeChatViewport(rows: [row("A", 0), row("B", 100)], anchorIndex: 1, anchorOrdinal: 99)
+        let next = [row("A", 10), row("B", 110)]
+        XCTAssertThrowsError(try viewport.pin(next, index: 0, ordinal: 99))
+        XCTAssertThrowsError(try viewport.pin(next, index: 1, ordinal: 98))
+        XCTAssertThrowsError(try viewport.pin(next, index: 2, ordinal: 99))
+        XCTAssertEqual(viewport.firstOrdinal, 100)
+        try viewport.pin(next, index: 1, ordinal: 99)
+        XCTAssertEqual(viewport.index(of: 100), 0)
+        XCTAssertEqual(viewport.lastDisplacement, 10)
+    }
     func testNativeArchiveRejectsCorruptionTruncationAndCancellation() throws {
         var data = try XCTUnwrap(Data(base64Encoded: storedZIP))
         data[245] ^= 0xff // attachment payload, outside the transcript
