@@ -344,6 +344,7 @@
 "HTML 预览" = "HTML preview";
 "解压后打开 index.html，按时间线查看聊天记录。" = "Extract the ZIP and open index.html to browse the chat timeline.";
 "正在生成 HTML 预览…" = "Generating HTML preview…";
+"正在整理聊天记录…" = "Preparing chat records…";
 "最近 %@ 条消息" = "Last %@ messages";
 "条数过大，请输入更小的数字。" = "This number is too large to process. Enter a smaller number.";
 "正在合并聊天记录…" = "Merging chat records…";

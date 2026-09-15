@@ -226,15 +226,16 @@ final class WeChatQuickForward: ObservableObject {
             guard !originals.isEmpty, originals.count == capture.directories.count, originals.count == counts.count,
                   originals.allSatisfy({ $0.items.count == 1 }) else { throw WeChatAutomationError.invalidArchive }
             let merging = preset.mergeArchives && originals.count > 1
-            let repackaging = merging || preset.htmlPreview
+            let removingMedia = !preset.saveImages || !preset.saveVideos
+            let repackaging = merging || preset.htmlPreview || removingMedia
             status = preset.htmlPreview ? L10n.text("正在生成 HTML 预览…")
-                : merging ? L10n.text("正在合并聊天记录…") : L10n.text("正在整理文件名…")
+                : merging ? L10n.text("正在合并聊天记录…") : removingMedia ? L10n.text("正在整理聊天记录…") : L10n.text("正在整理文件名…")
             let preparedDirectories: [URL] = try await withCheckedThrowingContinuation { continuation in
                 Self.worker.async {
                     continuation.resume(with: Result {
                         try WeChatExportArchive.prepare(originals, chat: preset.chat, fallbackCounts: counts,
                                                         mergeArchives: preset.mergeArchives, htmlPreview: preset.htmlPreview,
-                                                        in: inbox, selfSender: capture.selfSender, exportedAt: requestedAt,
+                                                        saveImages: preset.saveImages, saveVideos: preset.saveVideos, in: inbox, selfSender: capture.selfSender, exportedAt: requestedAt,
                                                         checkCancellation: token.check)
                     })
                 }

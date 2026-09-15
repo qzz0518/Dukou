@@ -52,8 +52,6 @@ enum WeChatHTMLPreview {
         }
         day.dateFormat = "yyyy-MM-dd"
         time.dateFormat = "HH:mm"
-        let marker = try NSRegularExpression(pattern: #"^\[(?:图片|视频|文件|语音|音频|表情|image|video|file|voice|audio|sticker)\][ \t]*(.+)$"#,
-                                             options: .caseInsensitive)
         var timeline: [(date: Date, order: Int, message: Message)] = []
         var supplements: [Supplement] = []
         var unparsedBatches = 0
@@ -63,8 +61,7 @@ enum WeChatHTMLPreview {
             for path in batch.paths where path != batch.transcript?.path {
                 if let attachment = attachment(path, prefix: batch.prefix) { files[path] = attachment }
             }
-            // WeChat's native TXT names an attachment by basename, while the
-            // ZIP keeps it in 聊天记录内的图片、视频和文件/. Never choose an ambiguous match.
+            let attachable = Set(files.keys)
             let byName = Dictionary(grouping: files.keys, by: { ($0 as NSString).lastPathComponent })
             var used = Set<String>()
             if let records = batch.transcript?.records, !records.isEmpty {
@@ -79,16 +76,7 @@ enum WeChatHTMLPreview {
                     }
                     for line in record.text.components(separatedBy: "\n") {
                         try checkCancellation()
-                        let trimmed = line.trimmingCharacters(in: .whitespaces)
-                        let match = marker.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed))
-                        var reference = match.map { (trimmed as NSString).substring(with: $0.range(at: 1)) } ?? trimmed
-                        if reference.hasPrefix("./") { reference.removeFirst(2) }
-                        let path: String?
-                        if files[reference] != nil { path = reference }
-                        else if !reference.contains("/"), let candidates = byName[reference], candidates.count == 1 {
-                            path = candidates[0]
-                        } else { path = nil }
-                        if let path, let file = files[path] {
+                        if let path = WeChatAttachmentKind.attachment(in: line, paths: attachable, byName: byName)?.path, let file = files[path] {
                             flushText()
                             parts.append(Part(file: file))
                             used.insert(path)

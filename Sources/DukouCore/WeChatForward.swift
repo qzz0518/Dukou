@@ -114,10 +114,14 @@ public struct WeChatForwardPreset: Codable, Hashable, Identifiable, Sendable {
     public var pastePath: Bool
     public var mergeArchives: Bool
     public var htmlPreview: Bool
+    /// Unlike Moments these cost nothing extra — the files are already in
+    /// WeChat's ZIP — so both start on.
+    public var saveImages: Bool
+    public var saveVideos: Bool
     public var lastUsed: Date?
     public var id: String { chat }
 
-    public init(chat: String = "", range: WeChatForwardRange = .init(), targetBundleIdentifier: String = "", targetName: String = "", destinationFolder: URL? = nil, pastePath: Bool = false, mergeArchives: Bool = false, htmlPreview: Bool = false, lastUsed: Date? = nil) {
+    public init(chat: String = "", range: WeChatForwardRange = .init(), targetBundleIdentifier: String = "", targetName: String = "", destinationFolder: URL? = nil, pastePath: Bool = false, mergeArchives: Bool = false, htmlPreview: Bool = false, saveImages: Bool = true, saveVideos: Bool = true, lastUsed: Date? = nil) {
         self.chat = Self.normalizedChat(chat)
         self.range = range
         self.targetBundleIdentifier = destinationFolder == nil ? targetBundleIdentifier : ""
@@ -126,11 +130,13 @@ public struct WeChatForwardPreset: Codable, Hashable, Identifiable, Sendable {
         self.pastePath = destinationFolder == nil && pastePath
         self.mergeArchives = mergeArchives
         self.htmlPreview = htmlPreview
+        self.saveImages = saveImages
+        self.saveVideos = saveVideos
         self.lastUsed = lastUsed
     }
 
     private enum CodingKeys: String, CodingKey {
-        case chat, range, targetBundleIdentifier, targetName, destinationFolder, pastePath, mergeArchives, htmlPreview, lastUsed
+        case chat, range, targetBundleIdentifier, targetName, destinationFolder, pastePath, mergeArchives, htmlPreview, saveImages, saveVideos, lastUsed
     }
 
     public init(from decoder: Decoder) throws {
@@ -144,6 +150,8 @@ public struct WeChatForwardPreset: Codable, Hashable, Identifiable, Sendable {
             pastePath: try values.decode(Bool.self, forKey: .pastePath),
             mergeArchives: try values.decodeIfPresent(Bool.self, forKey: .mergeArchives) ?? false,
             htmlPreview: try values.decodeIfPresent(Bool.self, forKey: .htmlPreview) ?? false,
+            saveImages: try values.decodeIfPresent(Bool.self, forKey: .saveImages) ?? true,
+            saveVideos: try values.decodeIfPresent(Bool.self, forKey: .saveVideos) ?? true,
             lastUsed: try values.decodeIfPresent(Date.self, forKey: .lastUsed)
         )
     }

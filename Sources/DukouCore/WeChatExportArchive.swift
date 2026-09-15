@@ -11,24 +11,27 @@ public enum WeChatExportArchive {
         }
     }
 
-    /// The preview is independent of merging: a single native receipt and each
-    /// unmerged part get the same offline reader. Publish all replacements
-    /// before the caller consumes any original receipt.
+    /// The preview and leaving out media are independent of merging: a single
+    /// native receipt and each unmerged part are repackaged the same way.
+    /// Publish all replacements before the caller consumes any original receipt.
     public static func prepare(_ batches: [ReadyBatch], chat: String, fallbackCounts: [Int],
-                               mergeArchives: Bool, htmlPreview: Bool, in inbox: Inbox,
+                               mergeArchives: Bool, htmlPreview: Bool, saveImages: Bool = true, saveVideos: Bool = true, in inbox: Inbox,
                                selfSender: String? = nil, exportedAt: Date = Date(), checkCancellation: () throws -> Void = {}) throws -> [URL] {
         guard !batches.isEmpty, batches.count == fallbackCounts.count else { throw Failure.mergeFailed }
         if mergeArchives && batches.count > 1 {
-            return [try merge(batches, chat: chat, fallbackCounts: fallbackCounts, in: inbox,
-                              htmlPreview: htmlPreview, selfSender: selfSender, exportedAt: exportedAt, checkCancellation: checkCancellation)]
+            return [try merge(batches, chat: chat, fallbackCounts: fallbackCounts, in: inbox, htmlPreview: htmlPreview,
+                              saveImages: saveImages, saveVideos: saveVideos, selfSender: selfSender, exportedAt: exportedAt,
+                              checkCancellation: checkCancellation)]
         }
+        let repackaging = htmlPreview || !saveImages || !saveVideos
         var prepared: [URL] = []
         do {
             for (index, batch) in batches.enumerated() {
                 let part = batches.count > 1 ? index + 1 : nil
-                if htmlPreview {
+                if repackaging {
                     prepared.append(try merge([batch], chat: chat, fallbackCounts: [fallbackCounts[index]], in: inbox,
-                                              htmlPreview: true, selfSender: selfSender, part: part, exportedAt: exportedAt,
+                                              htmlPreview: htmlPreview, saveImages: saveImages, saveVideos: saveVideos,
+                                              selfSender: selfSender, part: part, exportedAt: exportedAt,
                                               checkCancellation: checkCancellation))
                 } else {
                     try rename(batch, chat: chat, fallbackCount: fallbackCounts[index], part: part,
@@ -40,7 +43,7 @@ public enum WeChatExportArchive {
         } catch {
             // These replacements have no delivery side effects yet. Keep only
             // native receipts on failure, including cancellation between parts.
-            if htmlPreview { for directory in prepared { try? FileManager.default.removeItem(at: directory) } }
+            if repackaging { for directory in prepared { try? FileManager.default.removeItem(at: directory) } }
             throw error
         }
     }
@@ -81,8 +84,9 @@ public enum WeChatExportArchive {
     /// Batches arrive oldest first. Each keeps a separate directory, preventing
     /// identically named attachments from overwriting one another. The root TXT
     /// combines their texts and supplies explicit paths to all original files.
+    /// Unsaved images and videos leave only their files; every message stays.
     public static func merge(_ batches: [ReadyBatch], chat: String, fallbackCounts: [Int], in inbox: Inbox,
-                             htmlPreview: Bool = false, selfSender: String? = nil, part: Int? = nil,
+                             htmlPreview: Bool = false, saveImages: Bool = true, saveVideos: Bool = true, selfSender: String? = nil, part: Int? = nil,
                              exportedAt: Date = Date(), checkCancellation: () throws -> Void = {}) throws -> URL {
         try checkCancellation()
         guard !batches.isEmpty, batches.count == fallbackCounts.count else { throw Failure.mergeFailed }
@@ -96,7 +100,10 @@ public enum WeChatExportArchive {
         guard FileManager.default.createFile(atPath: textURL.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw Failure.mergeFailed }
         let text = try FileHandle(forWritingTo: textURL)
         defer { try? text.close() }
-        try write("聊天：\(chat)\n说明：按导出批次从早到晚排列，原始文字和附件保留在各批次目录。\n\n", to: text, checkCancellation: checkCancellation)
+        var header = "聊天：\(chat)\n说明：按导出批次从早到晚排列，原始文字和附件保留在各批次目录。\n"
+        if !saveImages { header += "未选择保存图片，文字中的图片只有文件名。\n" }
+        if !saveVideos { header += "未选择保存视频，文字中的视频只有文件名。\n" }
+        try write(header + "\n", to: text, checkCancellation: checkCancellation)
         var first: Date?, last: Date?, count = 0, allDatesKnown = true
         var previewBatches: [WeChatHTMLPreview.Batch] = []
         for (index, batch) in batches.enumerated() {
@@ -114,7 +121,11 @@ public enum WeChatExportArchive {
             let prefix = "batches/" + String(repeating: "0", count: max(0, 4 - number.count)) + number
             let folder = payload.appendingPathComponent(prefix, isDirectory: true)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-            let paths = try WeChatNativeArchive.extract(data, to: folder, checkCancellation: checkCancellation)
+            var paths = try WeChatNativeArchive.extract(data, to: folder, checkCancellation: checkCancellation)
+            if !saveImages || !saveVideos {
+                paths = try removeMedia(images: !saveImages, videos: !saveVideos, from: paths, named: transcript, in: folder,
+                                        checkCancellation: checkCancellation)
+            }
             if htmlPreview {
                 previewBatches.append(.init(transcript: transcript, prefix: prefix, paths: paths))
             }
@@ -147,6 +158,38 @@ public enum WeChatExportArchive {
         let manifest = BatchManifest(batchID: staging.batchID, createdAt: exportedAt, items: [item], action: .shelf)
         try checkCancellation()
         return try staging.commit(manifest: manifest, diagnostics: nil, intent: nil, in: inbox)
+    }
+
+    /// Like Moments without its media: the TXT is untouched and only the files
+    /// leave. A file takes the kind of the marker on the line naming it, else
+    /// its extension; a file any line sends as `[文件]` is never an image or a video.
+    private static func removeMedia(images: Bool, videos: Bool, from paths: [String], named transcript: WeChatNativeArchive.Transcript?,
+                                    in folder: URL, checkCancellation: () throws -> Void) throws -> [String] {
+        let candidates = paths.filter { $0 != transcript?.path }
+        let available = Set(candidates)
+        let byName = Dictionary(grouping: candidates, by: { ($0 as NSString).lastPathComponent })
+        var marked: [String: WeChatAttachmentKind] = [:]
+        for line in transcript?.body.components(separatedBy: .newlines) ?? [] {
+            try checkCancellation()
+            if let named = WeChatAttachmentKind.attachment(in: line, paths: available, byName: byName), let kind = named.marked,
+               marked[named.path] != .other {
+                marked[named.path] = kind
+            }
+        }
+        var remaining: [String] = []
+        for path in paths {
+            try checkCancellation()
+            let kind = path == transcript?.path ? .other : marked[path] ?? WeChatAttachmentKind.of(path: path)
+            guard (kind == .image && images) || (kind == .video && videos) else { remaining.append(path); continue }
+            try FileManager.default.removeItem(at: folder.appendingPathComponent(path))
+            // An emptied 聊天记录内的图片、视频和文件/ would only suggest something went missing.
+            var parent = (path as NSString).deletingLastPathComponent
+            while !parent.isEmpty, (try? FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent(parent).path))?.isEmpty == true {
+                try FileManager.default.removeItem(at: folder.appendingPathComponent(parent))
+                parent = (parent as NSString).deletingLastPathComponent
+            }
+        }
+        return remaining
     }
 
     private static func source(_ batch: ReadyBatch) throws -> (ReadyItem, Data) {

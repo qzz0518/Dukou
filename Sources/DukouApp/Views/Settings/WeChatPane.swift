@@ -80,6 +80,14 @@ struct WeChatPane: View {
                     Text(rangeValidationMessage)
                         .font(Typo.paneCaption).foregroundStyle(Theme.danger)
                 }
+                HStack(spacing: Space.m) {
+                    Toggle(L10n.text("保存图片"), isOn: $forward.draft.saveImages)
+                        .toggleStyle(SettingsOptionToggleStyle(symbol: "photo"))
+                        .accessibilityIdentifier("wechat.images")
+                    Toggle(L10n.text("保存视频"), isOn: $forward.draft.saveVideos)
+                        .toggleStyle(SettingsOptionToggleStyle(symbol: "video"))
+                        .accessibilityIdentifier("wechat.videos")
+                }
             }.disabled(forward.isBusy)
 
             SettingsSection(title: L10n.text("转发到"), systemImage: "arrow.up.forward.app", spacing: Space.m) {

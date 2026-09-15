@@ -218,6 +218,61 @@ final class WeChatExportArchiveTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: source.items[0].url.path))
     }
 
+    func testUnsavedImagesAndVideosLeaveOnlyTheirFilesAndEveryMessageStays() throws {
+        let media = "聊天记录内的图片、视频和文件"
+        let bodies = ["开会[捂脸]", "[图片] 图片_1.jpg", "[视频] 视频_1.mp4", "[文件] 截图.png", "[图片] 截图.png", "[动画表情]",
+                      "[聊天记录]\n\n    ·乙\n    2026年9月7日 08:00\n    [图片] 图片_2.jpg", "[视频号] 标题 https://example.com/a"]
+        let transcript = bodies.enumerated().map { "·甲\n2026年9月8日 09:\(10 + $0.offset)\n\($0.element)\n" }.joined(separator: "\n")
+        let files = [("聊天记录.txt", Data(transcript.utf8)), ("\(media)/图片_1.jpg", Data([1])), ("\(media)/图片_2.jpg", Data([2])),
+                     ("\(media)/视频_1.mp4", Data([3])), ("\(media)/截图.png", Data([4]))]
+        for (saveImages, saveVideos, left) in [(false, true, ["截图.png", "视频_1.mp4"]), (true, false, ["图片_1.jpg", "图片_2.jpg", "截图.png"]),
+                                               (false, false, ["截图.png"])] {
+            let source = try batch(files)
+            let originalBytes = try Data(contentsOf: source.items[0].url)
+            let directories = try WeChatExportArchive.prepare([source], chat: "测试群", fallbackCounts: [100], mergeArchives: false, htmlPreview: true,
+                                                             saveImages: saveImages, saveVideos: saveVideos, in: temporary.inbox)
+            let item = try XCTUnwrap(InboxReader(inbox: temporary.inbox).batch(at: XCTUnwrap(directories.first))?.items.first)
+            XCTAssertTrue(item.displayName.contains("8条"), item.displayName)
+            let extracted = try unzip(item.url)
+            XCTAssertEqual(try String(contentsOf: extracted.appendingPathComponent("batches/0001/聊天记录.txt"), encoding: .utf8), transcript)
+            let root = try String(contentsOf: extracted.appendingPathComponent("聊天记录.txt"), encoding: .utf8)
+            XCTAssertTrue(root.contains(transcript))
+            XCTAssertEqual(root.contains("未选择保存图片"), !saveImages)
+            XCTAssertEqual(root.contains("未选择保存视频"), !saveVideos)
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: extracted.appendingPathComponent("batches/0001/\(media)").path).sorted(), left)
+            XCTAssertEqual(try previewMessages(in: extracted).count, bodies.count)
+            XCTAssertEqual(try Data(contentsOf: source.items[0].url), originalBytes)
+        }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: temporary.inbox.staging.path), [])
+    }
+
+    func testUnsavedMediaRepackagesAPlainExportAndRemovesAnEmptiedFolder() throws {
+        let text = "·甲\n2026年9月8日 11:25\n[图片] a.png\n"
+        let sources = try [batch([("聊天记录.txt", Data(text.utf8)), ("聊天记录内的图片、视频和文件/a.png", Data([1]))]),
+                           batch([("聊天记录.txt", Data(text.utf8)), ("聊天记录内的图片、视频和文件/a.png", Data([1]))])]
+        let directories = try WeChatExportArchive.prepare(sources, chat: "测试群", fallbackCounts: [1, 1], mergeArchives: false, htmlPreview: false,
+                                                         saveImages: false, in: temporary.inbox)
+        XCTAssertEqual(directories.count, 2)
+        XCTAssertTrue(Set(directories).isDisjoint(with: sources.map(\.directory)))
+        let item = try XCTUnwrap(InboxReader(inbox: temporary.inbox).batch(at: directories[1])?.items.first)
+        XCTAssertTrue(item.displayName.hasSuffix("_1条_第2批.zip"), item.displayName)
+        let extracted = try unzip(item.url)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: extracted.appendingPathComponent("index.html").path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: extracted.appendingPathComponent("batches/0001").path), ["聊天记录.txt"])
+    }
+
+    func testMediaInAnUnparsedTranscriptIsJudgedByExtension() throws {
+        let future = Data("新版格式\n[图片] a.png".utf8)
+        let source = try batch([("聊天记录.txt", future), ("a.png", Data([1])), ("clip.mov", Data([2])), ("notes.docx", Data([3]))])
+        let ready = try WeChatExportArchive.merge([source], chat: "测试", fallbackCounts: [4], in: temporary.inbox, saveImages: false, saveVideos: false)
+        let item = try XCTUnwrap(InboxReader(inbox: temporary.inbox).batch(at: ready)?.items.first)
+        XCTAssertTrue(item.displayName.contains("4条"))
+        let extracted = try unzip(item.url)
+        XCTAssertEqual(try Data(contentsOf: extracted.appendingPathComponent("batches/0001/聊天记录.txt")), future)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: extracted.appendingPathComponent("batches/0001").path).sorted(),
+                       ["notes.docx", "聊天记录.txt"])
+    }
+
     private func batch(_ files: [(String, Data)]) throws -> ReadyBatch {
         try batch(data: zip(files.map { ($0.0, $0.1, 0o100600) }))
     }

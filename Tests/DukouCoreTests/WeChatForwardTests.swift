@@ -134,6 +134,9 @@ final class WeChatForwardTests: XCTestCase {
         XCTAssertNil(WeChatForwardPreset().destinationFolder)
         XCTAssertFalse(WeChatForwardPreset().mergeArchives)
         XCTAssertFalse(WeChatForwardPreset().htmlPreview)
+        XCTAssertTrue(WeChatForwardPreset().saveImages && WeChatForwardPreset().saveVideos)
+        XCTAssertTrue(preferences.draft.saveImages && preferences.draft.saveVideos)
+        XCTAssertTrue(try XCTUnwrap(preferences.recent.first).saveImages && XCTUnwrap(preferences.recent.first).saveVideos)
         XCTAssertEqual(preferences.draft.chat, "Work")
         XCTAssertEqual(preferences.draft.targetBundleIdentifier, "app.editor")
         XCTAssertEqual(preferences.draft.targetName, "Editor")
@@ -196,6 +199,17 @@ final class WeChatForwardTests: XCTestCase {
         XCTAssertFalse(reloaded.draft.htmlPreview)
         XCTAssertEqual(reloaded.recent.first?.htmlPreview, false)
         XCTAssertEqual(reloaded.recent.first(where: { $0.chat == separate.chat })?.htmlPreview, true)
+    }
+
+    func testMediaChoicesAreRememberedPerChat() throws {
+        var preferences = WeChatForwardPreferences()
+        preferences.recordSuccess(WeChatForwardPreset(chat: "No images", targetBundleIdentifier: "app.editor", targetName: "Editor", saveImages: false))
+        preferences.recordSuccess(WeChatForwardPreset(chat: "No videos", targetBundleIdentifier: "app.editor", targetName: "Editor", saveVideos: false))
+        let loaded = WeChatForwardPreferences.decode(try JSONEncoder().encode(preferences))
+        XCTAssertEqual(loaded.draft.chat, "No videos")
+        XCTAssertTrue(loaded.draft.saveImages); XCTAssertFalse(loaded.draft.saveVideos)
+        let noImages = try XCTUnwrap(loaded.recent.first { $0.chat == "No images" })
+        XCTAssertFalse(noImages.saveImages); XCTAssertTrue(noImages.saveVideos)
     }
 
     func testMergePreferenceIsRememberedPerChatAndReplacedOnSuccess() throws {
