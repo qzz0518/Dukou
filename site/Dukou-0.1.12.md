@@ -1,3 +1,6 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
 ## 更新日志
 
 - 快捷微信转发新增「保存图片」「保存视频」开关，关掉后导出只保留文字记录，不带对应的图片或视频文件。
