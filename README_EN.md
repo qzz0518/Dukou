@@ -3,7 +3,7 @@
   <h1>Dukou (渡口)</h1>
   <p><strong>Send chat history straight from WeChat's forward menu to wherever you need it.</strong></p>
   <p>A native, lightweight, entirely local WeChat chat-history hand-off for macOS.</p>
-  <p>It is also a compliant backup tool for WeChat chats and Moments: WeChat's own forward and export only — no database reads, no decryption, no injection.</p>
+  <p>It is also a compliant bulk text backup for WeChat chats and Moments: time-ordered TXT with the original photos and videos and an offline HTML preview, made with WeChat's own forward and export only — no database reads, no decryption, no injection.</p>
   <p><a href="README.md">简体中文</a> · English</p>
   <p>
     <img src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&logo=apple" alt="macOS 14+" />
@@ -18,6 +18,10 @@
 
 <p align="center">
   <img src="Resources/Screenshots/overview.png" width="1100" alt="Dukou overview: entry switches, quick WeChat forward, the shelf and history" />
+</p>
+
+<p align="center">
+  <img src="Resources/Screenshots/backup-preview.png" width="1100" alt="Quick Moments forward settings and the offline HTML chat preview inside an exported ZIP" />
 </p>
 
 ## Background
@@ -45,10 +49,10 @@ One step further, Quick WeChat forward and Quick Moments forward (experimental) 
 - **Send to any app.** Keep your own list under Send to Custom; terminal-like apps can receive file paths instead.
 - **Attached prompt.** A prompt of your own is pasted before the files when sending to Codex, Claude or a custom app; keep up to three.
 - **Failures have a way out.** App missing, permission missing or app not in front: the files are already on the clipboard and can go to the shelf.
-- **Quick WeChat forward (experimental).** Name a group and a count; Dukou selects and merge-forwards in WeChat, then pastes the ZIP into the current app or saves it to a folder. Batches past 100 can be combined into one ZIP; ESC stops it.
-- **HTML chat preview.** An `index.html` inside the ZIP for browsing the chat offline: search, filter by date, view images, play audio and video.
+- **Quick WeChat forward (experimental).** Name a group and a count; Dukou selects and merge-forwards in WeChat, then pastes the ZIP into the current app or saves it to a folder. Photos and videos are optional, batches past 100 can be combined into one ZIP, and ESC stops it.
+- **Offline HTML preview.** An `index.html` inside the ZIP for browsing the chat as bubbles in your browser: search, filter by date, view images, play audio and video.
 - **Quick Moments forward (experimental).** Export a number of recent posts as a time-ordered TXT with the photos and videos in the same ZIP. Downloading is slow; ESC stops it.
-- **Backups on your own disk.** Save a quick forward to a folder and you have a backup, named by chat, time range and count.
+- **Bulk text backups.** Save a quick forward to a folder and you have a backup: chats and Moments as time-ordered TXT, photos and videos if you want them, named by chat, time range and count.
 - **Safe updates.** Sparkle checks for signed releases and downloads only from GitHub Releases.
 - **Simplified Chinese and English** throughout.
 
