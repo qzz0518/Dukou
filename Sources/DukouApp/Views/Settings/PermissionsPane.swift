@@ -16,8 +16,6 @@ struct PermissionsPane: View {
                         .buttonStyle(SettingsActionButtonStyle())
                 }
             }
-
-            Notice(L10n.text("辅助功能不会弹系统授权框，需要把 Dukou 拖进列表；授权后立即生效，不必重启。"))
         }
     }
 }

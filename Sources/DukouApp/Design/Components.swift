@@ -5,10 +5,13 @@ import SwiftUI
 
 /// A titled block: a quiet label, one rule, then rows. Whitespace separates the
 /// rows; the line under the label is the only divider a settings group needs.
-struct SettingsSection<Content: View>: View {
+struct SettingsSection<Content: View, Accessory: View>: View {
     let title: String
     var systemImage: String?
     var spacing: CGFloat = Space.l
+    /// Sits at the trailing end of the title line: the switch for a section
+    /// that is one optional feature, so turning it on does not cost a row.
+    @ViewBuilder var accessory: () -> Accessory
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -22,6 +25,8 @@ struct SettingsSection<Content: View>: View {
                 Text(title)
                     .font(Typo.sectionLabel)
                     .foregroundStyle(Theme.inkSecondary)
+                Spacer(minLength: Space.m)
+                accessory()
             }
             .padding(.bottom, Space.s)
 
@@ -35,6 +40,40 @@ struct SettingsSection<Content: View>: View {
             }
         }
         .accessibilityElement(children: .contain)
+    }
+}
+
+extension SettingsSection where Accessory == EmptyView {
+    init(title: String, systemImage: String? = nil, spacing: CGFloat = Space.l, @ViewBuilder content: @escaping () -> Content) {
+        self.init(title: title, systemImage: systemImage, spacing: spacing, accessory: { EmptyView() }, content: content)
+    }
+}
+
+/// One line of a form: a short label in a fixed column, its controls beside
+/// it. The column is what lets a page of unlike controls read as one list.
+struct FormRow<Content: View>: View {
+    /// Where every row's controls start, for a caption that belongs under them.
+    static var contentInset: CGFloat { 52 + Space.m }
+
+    let label: String
+    @ViewBuilder var content: () -> Content
+
+    init(_ label: String, @ViewBuilder content: @escaping () -> Content) {
+        self.label = label
+        self.content = content
+    }
+
+    var body: some View {
+        // Top-aligned, with the label centred in one control's height: a row
+        // that grows a caption underneath keeps its label on the first line.
+        HStack(alignment: .top, spacing: Space.m) {
+            Text(label)
+                .font(Typo.paneCaption)
+                .foregroundStyle(Theme.inkSecondary)
+                .frame(width: 52, height: SettingsControlMetrics.height, alignment: .leading)
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 

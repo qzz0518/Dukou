@@ -27,7 +27,7 @@ struct ForwardTargetList: View {
     private var well: some View {
         Group {
             if targets.isEmpty {
-                Text(L10n.text("还没有添加应用。加进来的 App 会出现在「发送到自定义」的面板里。"))
+                Text(L10n.text("还没有添加应用。"))
                     .font(Typo.paneCaption)
                     .foregroundStyle(Theme.inkTertiary)
                     .frame(maxWidth: .infinity, alignment: .center)

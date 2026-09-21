@@ -14,12 +14,16 @@ public enum WeChatExportArchive {
     /// The preview and leaving out media are independent of merging: a single
     /// native receipt and each unmerged part are repackaged the same way.
     /// Publish all replacements before the caller consumes any original receipt.
+    ///
+    /// A Markdown note is one note however many batches it took to collect, so
+    /// asking for one merges them whatever `mergeArchives` says.
     public static func prepare(_ batches: [ReadyBatch], chat: String, fallbackCounts: [Int],
-                               mergeArchives: Bool, htmlPreview: Bool, saveImages: Bool = true, saveVideos: Bool = true, in inbox: Inbox,
+                               mergeArchives: Bool, htmlPreview: Bool, markdown: Bool = false,
+                               saveImages: Bool = true, saveVideos: Bool = true, in inbox: Inbox,
                                selfSender: String? = nil, exportedAt: Date = Date(), checkCancellation: () throws -> Void = {}) throws -> [URL] {
         guard !batches.isEmpty, batches.count == fallbackCounts.count else { throw Failure.mergeFailed }
-        if mergeArchives && batches.count > 1 {
-            return [try merge(batches, chat: chat, fallbackCounts: fallbackCounts, in: inbox, htmlPreview: htmlPreview,
+        if (mergeArchives && batches.count > 1) || markdown {
+            return [try merge(batches, chat: chat, fallbackCounts: fallbackCounts, in: inbox, htmlPreview: htmlPreview, markdown: markdown,
                               saveImages: saveImages, saveVideos: saveVideos, selfSender: selfSender, exportedAt: exportedAt,
                               checkCancellation: checkCancellation)]
         }
@@ -50,13 +54,19 @@ public enum WeChatExportArchive {
 
     /// A rename within the item's own directory changes no ZIP bytes. Commit
     /// its manifest before observing another cancellation; roll back on error.
-    public static func rename(_ batch: ReadyBatch, chat: String, fallbackCount: Int?, part: Int? = nil, exportedAt: Date = Date(), checkCancellation: () throws -> Void = {}) throws {
+    ///
+    /// `requiringRecords` is for a share Dukou did not drive itself: WeChat
+    /// forwards a single file message through the same menu, and a ZIP somebody
+    /// sent in the chat is not a chat export to be named after the group.
+    public static func rename(_ batch: ReadyBatch, chat: String, fallbackCount: Int?, part: Int? = nil, exportedAt: Date = Date(),
+                              requiringRecords: Bool = false, checkCancellation: () throws -> Void = {}) throws {
         try checkCancellation()
         let (item, data) = try source(batch)
         let transcript: WeChatNativeArchive.Transcript?
         do { transcript = try WeChatNativeArchive.transcript(data, checkCancellation: checkCancellation) }
         catch is CancellationError { throw CancellationError() }
         catch { transcript = nil }
+        guard !requiringRecords || transcript?.records?.isEmpty == false else { return }
         let name = ForwardArchiveName.make(source: chat, count: transcript?.records?.count ?? fallbackCount,
                                            start: transcript?.start, end: transcript?.end, part: part, exportedAt: exportedAt)
         guard item.displayName != name else { return }
@@ -86,7 +96,7 @@ public enum WeChatExportArchive {
     /// combines their texts and supplies explicit paths to all original files.
     /// Unsaved images and videos leave only their files; every message stays.
     public static func merge(_ batches: [ReadyBatch], chat: String, fallbackCounts: [Int], in inbox: Inbox,
-                             htmlPreview: Bool = false, saveImages: Bool = true, saveVideos: Bool = true, selfSender: String? = nil, part: Int? = nil,
+                             htmlPreview: Bool = false, markdown: Bool = false, saveImages: Bool = true, saveVideos: Bool = true, selfSender: String? = nil, part: Int? = nil,
                              exportedAt: Date = Date(), checkCancellation: () throws -> Void = {}) throws -> URL {
         try checkCancellation()
         guard !batches.isEmpty, batches.count == fallbackCounts.count else { throw Failure.mergeFailed }
@@ -126,7 +136,7 @@ public enum WeChatExportArchive {
                 paths = try removeMedia(images: !saveImages, videos: !saveVideos, from: paths, named: transcript, in: folder,
                                         checkCancellation: checkCancellation)
             }
-            if htmlPreview {
+            if htmlPreview || markdown {
                 previewBatches.append(.init(transcript: transcript, prefix: prefix, paths: paths))
             }
             try write("【第 \(index + 1) 批】\n本批文字中的文件路径相对于：\(prefix)/\n", to: text, checkCancellation: checkCancellation)
@@ -144,11 +154,16 @@ public enum WeChatExportArchive {
             try checkCancellation()
             try Data(html.utf8).write(to: payload.appendingPathComponent("index.html"), options: .atomic)
         }
+        if markdown {
+            let note = try WeChatMarkdown.render(chat: chat, batches: previewBatches, exportedAt: exportedAt, checkCancellation: checkCancellation)
+            try checkCancellation()
+            try Data(note.utf8).write(to: payload.appendingPathComponent(WeChatMarkdown.fileName), options: .atomic)
+        }
         let name = ForwardArchiveName.make(source: chat, count: count, start: allDatesKnown ? first : nil,
                                            end: allDatesKnown ? last : nil, part: part, exportedAt: exportedAt)
         let itemID = UUID()
         let archive = try staging.destination(for: itemID, displayName: name)
-        try compress(payload, to: archive, work: work, htmlPreview: htmlPreview, checkCancellation: checkCancellation)
+        try compress(payload, to: archive, work: work, htmlPreview: htmlPreview, markdown: markdown, checkCancellation: checkCancellation)
         let attributes = try FileManager.default.attributesOfItem(atPath: archive.path)
         guard let bytes = attributes[.size] as? NSNumber, bytes.int64Value > 0 else { throw Failure.mergeFailed }
         try FileManager.default.removeItem(at: work)
@@ -213,7 +228,7 @@ public enum WeChatExportArchive {
         }
     }
 
-    private static func compress(_ payload: URL, to archive: URL, work: URL, htmlPreview: Bool, checkCancellation: () throws -> Void) throws {
+    private static func compress(_ payload: URL, to archive: URL, work: URL, htmlPreview: Bool, markdown: Bool, checkCancellation: () throws -> Void) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
         process.arguments = ["-c", "--format=zip", "--options=zip:hdrcharset=UTF-8", "-f", archive.path,
@@ -221,6 +236,7 @@ public enum WeChatExportArchive {
                              "--uid", "0", "--gid", "0", "--uname", "", "--gname", "",
                              "-C", payload.path, "--", "聊天记录.txt", "batches"]
         if htmlPreview { process.arguments?.append("index.html") }
+        if markdown { process.arguments?.append(WeChatMarkdown.fileName) }
         process.currentDirectoryURL = work
         process.environment = ["PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8",
                                "TMPDIR": work.path + "/", "COPYFILE_DISABLE": "1"]

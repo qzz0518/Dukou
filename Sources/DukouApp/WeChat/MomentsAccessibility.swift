@@ -337,6 +337,7 @@ final class MomentsAccessibility {
         AutoPaste.restoreWindows(pid: app.processIdentifier)
         try pause(0.2)
         try frontmost()
+        guard WeChatAccessibility.interfaceVisibility(pid: app.processIdentifier) != .hidden else { throw WeChatAutomationError.interfaceHidden }
         let initial = try nodes()
         guard !initial.contains(where: { $0.role == "AXDialog" || $0.id == "cancel_btn" || $0.named(["图片和视频", "Photos and Videos", "关闭（esc 或 空格）"]) }) else { throw MomentsAutomationError.timeline }
         if !initial.contains(where: { $0.id == "sns_list" }) {

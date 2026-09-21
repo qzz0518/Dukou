@@ -44,6 +44,7 @@ final class Preferences: ObservableObject {
         static let shelfAnchor = "dev.dukou.shelfAnchor"
         static let hasShownShelfCoachMark = "dev.dukou.hasShownShelfCoachMark"
         static let prompt = "dev.dukou.attachedPrompt"
+        static let chatMemory = "dev.dukou.chatMemory"
     }
 
     /// A week: long enough that last Friday's chat export is still there on
@@ -77,6 +78,8 @@ final class Preferences: ObservableObject {
             ?? PromptSettings.makeDefault(
                 text: L10n.text("附件是微信导出的聊天记录（TXT 加图片、视频）。请通读，按时间线总结要点、结论和待办。")
             )
+        chatMemory = defaults.data(forKey: Key.chatMemory)
+            .flatMap { try? JSONDecoder().decode(ChatMemories.self, from: $0) } ?? ChatMemories()
     }
 
     /// Set only by finishing the guide. Closing its window half way through is
@@ -132,5 +135,29 @@ final class Preferences: ObservableObject {
             guard let data = try? JSONEncoder().encode(prompt) else { return }
             defaults.set(data, forKey: Key.prompt)
         }
+    }
+
+    /// Which prompt each chat uses, and how far each prompt has got with it.
+    @Published var chatMemory: ChatMemories {
+        didSet {
+            guard let data = try? JSONEncoder().encode(chatMemory) else { return }
+            defaults.set(data, forKey: Key.chatMemory)
+        }
+    }
+
+    /// What a forward of `chat` pastes ahead of its files: the chat's own
+    /// prompt or the selected one, plus the 续聊 sentence when this export
+    /// overlaps what that prompt has already been through.
+    func promptAttachment(
+        for surface: PromptSurface,
+        chat: String?,
+        span: (start: Date, end: Date)?
+    ) -> (id: UUID, text: String)? {
+        guard let attached = prompt.attachment(for: surface, preferring: chat.flatMap(chatMemory.promptID(for:))) else { return nil }
+        guard prompt.resumesChats, let chat, let span,
+              let cursor = chatMemory.cursor(for: chat, prompt: attached.id),
+              let note = ResumeNote.text(cursor: cursor, start: span.start, end: span.end)
+        else { return (attached.id, attached.text) }
+        return (attached.id, attached.text.trimmingCharacters(in: .whitespacesAndNewlines) + "\n\n" + note)
     }
 }

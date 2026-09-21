@@ -12,7 +12,6 @@ struct GeneralPane: View {
             SettingsSection(title: L10n.text("启动"), systemImage: "power") {
                 SettingRow(
                     title: L10n.text("登录时自动启动"),
-                    detail: L10n.text("开机后静默出现在菜单栏，转发和暂存架才会立刻响应。"),
                     alignment: .center
                 ) {
                     // The title stays on the control for VoiceOver and is then
@@ -40,7 +39,6 @@ struct GeneralPane: View {
             SettingsSection(title: L10n.text("暂存架"), systemImage: "tray") {
                 SettingRow(
                     title: L10n.text("停靠位置"),
-                    detail: L10n.text("暂存架出现时停在这个角落；拖到别处后会记住，直到你再改这里。"),
                     alignment: .center
                 ) {
                     SettingsSelect(
@@ -93,7 +91,6 @@ struct GeneralPane: View {
             SettingsSection(title: L10n.text("软件更新"), systemImage: "arrow.triangle.2.circlepath") {
                 SettingRow(
                     title: L10n.text("自动检查更新"),
-                    detail: L10n.text("每天检查一次，由 Sparkle 安全下载并安装。"),
                     alignment: .center
                 ) {
                     Toggle(L10n.text("自动检查更新"), isOn: Binding(
@@ -118,7 +115,6 @@ struct GeneralPane: View {
             SettingsSection(title: L10n.text("设置向导"), systemImage: "sparkles") {
                 SettingRow(
                     title: L10n.text("重新运行设置向导"),
-                    detail: L10n.text("四步走一遍：入口、暂存架、权限、完成。"),
                     alignment: .center
                 ) {
                     Button(L10n.text("重新运行")) { actions.restartOnboarding() }

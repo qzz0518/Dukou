@@ -83,11 +83,9 @@
 /* Settings window · General */
 "启动" = "Startup";
 "登录时自动启动" = "Open at login";
-"开机后静默出现在菜单栏，转发和暂存架才会立刻响应。" = "Appears quietly in the menu bar after a restart, so forwards and the shelf react immediately.";
 "还需要在系统设置里允许。" = "It still needs your approval in System Settings.";
 "打开登录项设置" = "Open Login Items Settings";
 "停靠位置" = "Docked corner";
-"暂存架出现时停在这个角落；拖到别处后会记住，直到你再改这里。" = "The shelf appears in this corner; drag it elsewhere and it stays there until you change this.";
 "左上" = "Top Left";
 "右上" = "Top Right";
 "左下" = "Bottom Left";
@@ -101,24 +99,22 @@
 "从不" = "Never";
 "设置向导" = "Setup guide";
 "重新运行设置向导" = "Run the setup guide again";
-"四步走一遍：入口、暂存架、权限、完成。" = "Four steps: entries, the shelf, permissions, done.";
 "重新运行" = "Run Again";
 
 /* Settings window · Entries */
-"微信「转发到其他应用」里出现哪些入口，这里说了算。关掉的那条立刻从菜单里消失。" = "These switches decide which entries WeChat’s Forward to Another App menu shows. Switch one off and it leaves the menu right away.";
 "转发菜单里的入口" = "Entries in the forward menu";
 "暂存到渡口" = "Stash in Dukou";
 "放到暂存架，自己拖到任何 App。" = "Puts them on the shelf so you can drag them into any app.";
 "激活 ChatGPT 并直接粘贴到输入框。" = "Brings ChatGPT forward and pastes straight into its input.";
 "激活 Claude 并直接粘贴到输入框。" = "Brings Claude forward and pastes straight into its input.";
-"只放进剪贴板，去哪儿按 ⌘V 由你决定。" = "Puts them on the clipboard and leaves the ⌘V to you.";
+"只放进剪贴板。" = "Only copies them to the clipboard.";
 "转发时从你自己的清单里挑一个 App，激活它并粘贴。" = "Pick an app from your own list when you forward; Dukou brings it forward and pastes.";
 "未注册" = "Not registered";
 "Dukou 需要安装在「应用程序」文件夹里，系统才会登记这些入口。" = "macOS only registers these entries once Dukou lives in your Applications folder.";
 "也可以在「系统设置 → 登录项与扩展 → 共享」里管理。" = "You can also manage them in System Settings → Login Items & Extensions → Sharing.";
 "打开系统设置" = "Open System Settings";
 "「发送到自定义」的应用" = "Apps for Send to Custom";
-"还没有添加应用。加进来的 App 会出现在「发送到自定义」的面板里。" = "No apps yet. Whatever you add here shows up in the Send to Custom panel.";
+"还没有添加应用。" = "No apps added yet.";
 "未安装" = "Not installed";
 "移除" = "Remove";
 "移除 %@" = "Remove %@";
@@ -127,13 +123,6 @@
 "手动从访达中选择…" = "Choose in Finder…";
 "只粘贴文件路径" = "Paste path only";
 "给终端类应用用：粘贴的是带引号的文件路径，跟把文件拖进终端一样。" = "For terminal-style apps: pastes the quoted file path, exactly as dropping the file on a terminal would.";
-"怎么用" = "How to use it";
-"打开要用的入口" = "Switch on the entries you want";
-"上面那几个开关，拨一下就生效，随时能再改。" = "The switches above take effect immediately, and you can change them any time.";
-"从微信转发" = "Forward from WeChat";
-"多选聊天记录 → 转发到其他应用 → 选你要的那一条。" = "Select chats → Forward to Another App → pick the entry you want.";
-"剩下的交给 Dukou" = "Dukou takes it from there";
-"转发类入口会自己激活目标 App 并粘贴；「暂存到渡口」会把文件放到屏幕角落的暂存架，拖走就消失。" = "A forwarding entry brings the target app up and pastes; Stash in Dukou puts the files on the shelf in the screen corner you picked, and dragging them away clears it.";
 
 /* Settings window · Permissions */
 "系统权限" = "System permissions";
@@ -177,7 +166,6 @@
 "上一步" = "Back";
 "把微信的转发菜单接到你要去的地方" = "Point WeChat’s forward menu at where you work";
 "把微信里的聊天记录压缩包接住，再拖给任何一个 App。" = "Dukou catches the chat archive WeChat hands over, ready for you to drag into any app.";
-"以后随时能在设置 → 入口 里改。" = "You can change these any time in Settings → Entries.";
 "转发到其他应用" = "Forward to Another App";
 "暂存到渡口，再拖到任何地方" = "Stash it in Dukou, then drag it anywhere";
 "用「暂存到渡口」转发过来的文件，都停在这个方块上。" = "Everything forwarded through Stash in Dukou waits on this one square.";
@@ -231,7 +219,6 @@
 "没有找到唯一匹配的群聊。请先在微信中打开这个群，再重新执行。" = "A unique matching group was not found. Open it in WeChat, then run again.";
 "等待开始微信转发…" = "Waiting to start WeChat forwarding…";
 "等待微信导出超时。已收到的文件会保留在暂存架。" = "WeChat export timed out. Files already received remain on the shelf.";
-"粘贴到" = "Paste into";
 "粘贴已完成，但部分记录状态未能保存。" = "Pasting finished, but some history statuses could not be saved.";
 "粘贴文件" = "Paste files";
 "粘贴方式" = "Paste format";
@@ -240,6 +227,7 @@
 "记住的群聊" = "Remembered groups";
 "请先关闭微信的聊天记录窗口，或退出正在进行的多选、转发。" = "Close WeChat history or finish the current selection or forward before starting.";
 "请先打开并登录微信。" = "Open WeChat and sign in first.";
+"微信没有向这个账号开放界面控件，快捷转发用不了，重装或重新授权无效。请在微信里手动多选后转发到 Dukou。" = "WeChat does not expose its controls for this account, so quick forward cannot run. Reinstalling or re-granting permission will not help. Select messages in WeChat yourself and forward them to Dukou.";
 "请输入 1–%d 之间的整数。" = "Enter an integer from 1 to %d.";
 "读取当前群" = "Use current group";
 "转发内容" = "Messages to forward";
@@ -274,12 +262,9 @@
 /* Software updates — General pane */
 "软件更新" = "Software Updates";
 "自动检查更新" = "Check for updates automatically";
-"每天检查一次，由 Sparkle 安全下载并安装。" = "Checks once a day. Sparkle downloads and installs securely.";
 "当前版本" = "Current version";
-"保存图片" = "Save photos";
 "保存文件" = "Save files";
 "保存未完成，部分文件可能已留在目标文件夹：%@" = "Save incomplete. Some files may remain in the destination folder: %@";
-"保存视频" = "Save videos";
 "包含 %d 张图片（未选择保存图片）。" = "Contains %d photos (photo saving was not selected).";
 "包含视频（未选择保存视频）。" = "Contains a video (video saving was not selected).";
 "图片未全部保存：%d / %d。" = "Not all photos were saved: %d / %d.";
@@ -322,28 +307,29 @@
 "请输入有效的朋友圈条数，并选择应用或文件夹。" = "Enter a valid Moments count and choose an app or folder.";
 "请至少选择 1 条朋友圈。" = "Choose at least one Moment.";
 "请选择一个可写入的文件夹。" = "Choose a writable folder.";
-"转发到" = "Forward to";
-"选中的那条会被附加，最多 3 条，各转发页面共用。" = "The selected prompt is attached. Keep up to 3, shared across forwarding pages.";
-"选择微信群和消息范围，导出微信原生 ZIP，粘贴到应用或保存到文件夹。" = "Choose a WeChat group and message range, export native ZIPs, then paste into an app or save to a folder.";
+"最多 3 条，各转发页面共用。" = "Up to 3, shared across forwarding pages.";
+"所选 Prompt 只对这个群生效。" = "The prompt picked here applies to this group only.";
+"续聊" = "Resume";
+"只处理 %@ 之后的新消息；更早的内容上次已经处理过，仅作上下文。" = "Only handle messages after %@. Earlier ones were covered last time and are context only.";
 "选择文件夹" = "Choose folder";
 "剪贴板已被其他操作更新，已停止以保留新内容。" = "The clipboard was changed by another action. The run stopped to preserve the new content.";
 "微信尚未完成媒体复制，请重试。" = "WeChat has not finished copying the media. Please try again.";
 "无法完整读取剪贴板，已停止以保留原内容。" = "The clipboard could not be read completely. The run stopped to preserve its contents.";
 
 /* Compact Moments forwarding controls */
-"按时间整理朋友圈，打包成 ZIP。" = "Arrange Moments by time and package them in a ZIP.";
-"保存图片会非常慢，请耐心等待。" = "Saving photos is very slow. Please be patient.";
-"保存视频会非常慢，请耐心等待。" = "Saving videos is very slow. Please be patient.";
+"保存图片会非常慢。" = "Saving photos is very slow.";
+"保存视频会非常慢。" = "Saving videos is very slow.";
 "选择应用" = "Choose an app";
-"或" = "or";
 "请先点选目标应用的输入框。" = "First click the input field in the target app.";
 "ZIP 保存到此文件夹，同名文件自动改名。" = "Save ZIPs here. Name conflicts are renamed automatically.";
-"把选中的 Prompt 一起粘贴。" = "Include the selected prompt.";
 "执行时请勿操作电脑，按 ESC 中断。" = "Do not use the computer during a run. ESC stops it.";
 "合并为一个 ZIP" = "Merge into one ZIP";
 "HTML 预览" = "HTML preview";
 "解压后打开 index.html，按时间线查看聊天记录。" = "Extract the ZIP and open index.html to browse the chat timeline.";
 "正在生成 HTML 预览…" = "Generating HTML preview…";
+"正在生成 Markdown…" = "Generating Markdown…";
+"已保存 Markdown 笔记到 %@ · 约 %d 条消息" = "Saved a Markdown note to %@ · About %d messages";
+"存成文件夹：Markdown 笔记加附件，可直接放进 Obsidian。" = "Saves a folder: a Markdown note with its attachments, ready for an Obsidian vault.";
 "正在整理聊天记录…" = "Preparing chat records…";
 "最近 %@ 条消息" = "Last %@ messages";
 "条数过大，请输入更小的数字。" = "This number is too large to process. Enter a smaller number.";
@@ -357,3 +343,21 @@
 "预计约 %@ 小时" = "About %@ hr";
 "预计约 %@ 小时 %@ 分钟" = "About %@ hr %@ min";
 "预计约 %@ 秒" = "About %@ sec";
+
+/* Quick forward form */
+"同一个群再次发送时，只处理上次之后的新消息。" = "When the same group is sent again, handle only what came after the last export.";
+"送到" = "Send to";
+"应用" = "App";
+"文件夹" = "Folder";
+"位置" = "Folder";
+"格式" = "Format";
+"Markdown 文件夹" = "Markdown folder";
+"更改…" = "Change…";
+"粘贴" = "Paste";
+"文件" = "File";
+"路径" = "Path";
+"群聊" = "Group";
+"范围" = "Range";
+"附带" = "Include";
+"图片" = "Photos";
+"视频" = "Videos";

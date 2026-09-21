@@ -28,6 +28,23 @@ public enum WeChatNativeArchive {
         return candidates.max { ($0.records?.count ?? 0) < ($1.records?.count ?? 0) }
     }
 
+    /// The first and last message time across these exports, for 续聊. Nil
+    /// when none of them carries a transcript whose dates can be read — a
+    /// merged ZIP Dukou built itself among them — which simply means no note
+    /// is added and no cursor moves.
+    public static func span(of urls: [URL]) -> (start: Date, end: Date)? {
+        var start: Date?, end: Date?
+        for url in urls where url.pathExtension.lowercased() == "zip" {
+            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+                  let transcript = try? transcript(data),
+                  let first = transcript.start, let last = transcript.end else { continue }
+            start = min(start ?? first, first)
+            end = max(end ?? last, last)
+        }
+        guard let start, let end else { return nil }
+        return (start, end)
+    }
+
     /// Only called for the optional merge. The destination is an empty, private
     /// staging directory, and each entry is streamed with its size/CRC checked.
     /// No ZIP path or symlink is passed to an external extraction tool.

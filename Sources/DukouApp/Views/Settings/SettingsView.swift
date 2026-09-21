@@ -113,6 +113,7 @@ struct SettingsView: View {
 
             ZStack {
                 Theme.raised
+                VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         Text(router.tab.title)
@@ -123,7 +124,8 @@ struct SettingsView: View {
                         content
                     }
                     .padding(.horizontal, 34)
-                    .padding(.vertical, Space.xl)
+                    .padding(.top, Space.xl + Metrics.settingsTitleBarClearance)
+                    .padding(.bottom, Space.xl)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .scrollBounceBehavior(.basedOnSize)
@@ -131,6 +133,8 @@ struct SettingsView: View {
                 // AppKit made first responder, which hides the page title.
                 .defaultScrollAnchor(.top)
                 .id(router.tab)
+                footer
+                }
             }
         }
         .frame(width: Metrics.settingsWidth, height: Metrics.settingsHeight)
@@ -150,6 +154,28 @@ struct SettingsView: View {
         .padding(.horizontal, 10)
         .padding(.top, Metrics.settingsTrafficLightInset)
         .padding(.bottom, Space.l)
+    }
+
+    /// Under the scroll view rather than in it, for the two pages that exist
+    /// to run something: see `QuickForwardFooter`.
+    @ViewBuilder
+    private var footer: some View {
+        switch router.tab {
+        case .wechat:
+            QuickForwardFooter(
+                isBusy: wechat.isBusy, canRun: wechat.canRun, savesToFolder: wechat.draft.destinationFolder != nil,
+                status: wechat.status, error: wechat.error, elapsedSeconds: wechat.elapsedSeconds,
+                identifierPrefix: "wechat", onStart: { wechat.start() }, onCancel: { wechat.cancel() }
+            )
+        case .moments:
+            QuickForwardFooter(
+                isBusy: moments.isBusy, canRun: moments.canRun, savesToFolder: moments.draft.destinationFolder != nil,
+                status: moments.status, error: moments.error, elapsedSeconds: moments.elapsedSeconds,
+                identifierPrefix: "moments", onStart: { moments.start() }, onCancel: { moments.cancel() }
+            )
+        default:
+            EmptyView()
+        }
     }
 
     @ViewBuilder

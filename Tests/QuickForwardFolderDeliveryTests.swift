@@ -191,6 +191,31 @@ final class QuickForwardFolderDeliveryTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: output), Data("another writer".utf8))
     }
 
+    func testUnpackedSaveNamesTheNoteAfterItsFolderAndNeverReplacesOne() throws {
+        let payload = root.appendingPathComponent("payload", isDirectory: true)
+        try fm.createDirectory(at: payload.appendingPathComponent("batches/0001"), withIntermediateDirectories: true)
+        try Data("# 笔记".utf8).write(to: payload.appendingPathComponent("聊天记录.md"))
+        try Data("文字".utf8).write(to: payload.appendingPathComponent("聊天记录.txt"))
+        try Data([1, 2, 3]).write(to: payload.appendingPathComponent("batches/0001/photo 1.png"))
+        let archive = root.appendingPathComponent("测试群_20260908_2条.zip")
+        let tar = Process()
+        tar.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        tar.arguments = ["-c", "--format=zip", "-f", archive.path, "-C", payload.path, "聊天记录.md", "聊天记录.txt", "batches"]
+        try tar.run(); tar.waitUntilExit()
+        XCTAssertEqual(tar.terminationStatus, 0)
+
+        let first = try QuickForwardFolderDelivery.saveUnpacked([archive], to: destination, checkCancellation: {})
+        let second = try QuickForwardFolderDelivery.saveUnpacked([archive], to: destination, checkCancellation: {})
+        XCTAssertEqual(try savedNames(), ["测试群_20260908_2条", "测试群_20260908_2条 (2)"])
+        for (folder, stem) in zip(first + second, ["测试群_20260908_2条", "测试群_20260908_2条"]) {
+            XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent(stem + ".md"), encoding: .utf8), "# 笔记")
+            XCTAssertFalse(fm.fileExists(atPath: folder.appendingPathComponent("聊天记录.md").path))
+            XCTAssertEqual(try Data(contentsOf: folder.appendingPathComponent("batches/0001/photo 1.png")), Data([1, 2, 3]))
+        }
+        XCTAssertThrowsError(try QuickForwardFolderDelivery.saveUnpacked([archive], to: destination, checkCancellation: { throw CancellationError() }))
+        XCTAssertEqual(try savedNames().count, 2)
+    }
+
     func testEmptyDeliveryCreatesNoStagingDirectory() throws {
         XCTAssertEqual(try QuickForwardFolderDelivery.save([], to: destination, checkCancellation: {}), [])
         XCTAssertEqual(try savedNames(), [])

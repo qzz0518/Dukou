@@ -37,19 +37,24 @@ public struct PromptSettings: Codable, Hashable, Sendable {
     public var attachToForwards: Bool
     public var attachToWeChat: Bool
     public var attachToMoments: Bool
+    /// 续聊: when a chat's export overlaps what the same prompt was last pasted
+    /// with, say so in the prompt. See `ResumeNote`.
+    public var resumesChats: Bool
 
     public init(
         prompts: [AttachedPrompt],
         selectedID: UUID? = nil,
         attachToForwards: Bool = false,
         attachToWeChat: Bool = false,
-        attachToMoments: Bool = false
+        attachToMoments: Bool = false,
+        resumesChats: Bool = true
     ) {
         self.prompts = prompts
         self.selectedID = selectedID
         self.attachToForwards = attachToForwards
         self.attachToWeChat = attachToWeChat
         self.attachToMoments = attachToMoments
+        self.resumesChats = resumesChats
         normalize()
     }
 
@@ -72,6 +77,7 @@ public struct PromptSettings: Codable, Hashable, Sendable {
         attachToForwards = try container.decodeIfPresent(Bool.self, forKey: .attachToForwards) ?? false
         attachToWeChat = try container.decodeIfPresent(Bool.self, forKey: .attachToWeChat) ?? false
         attachToMoments = try container.decodeIfPresent(Bool.self, forKey: .attachToMoments) ?? false
+        resumesChats = try container.decodeIfPresent(Bool.self, forKey: .resumesChats) ?? true
         normalize()
     }
 
@@ -82,15 +88,17 @@ public struct PromptSettings: Codable, Hashable, Sendable {
     public var canAdd: Bool { prompts.count < Self.maximumPrompts }
 
     /// The prompt to paste on this surface, or nil when the switch is off,
-    /// nothing is selected, or the selected prompt is blank.
-    public func attachment(for surface: PromptSurface) -> AttachedPrompt? {
+    /// nothing is selected, or the prompt is blank. `preferred` is the one the
+    /// chat being forwarded remembers (`ChatMemories`); it loses to the
+    /// selection only when it has since been deleted.
+    public func attachment(for surface: PromptSurface, preferring preferred: UUID? = nil) -> AttachedPrompt? {
         let enabled: Bool
         switch surface {
         case .forward: enabled = attachToForwards
         case .wechat: enabled = attachToWeChat
         case .moments: enabled = attachToMoments
         }
-        guard enabled, let prompt = selected else { return nil }
+        guard enabled, let prompt = prompts.first(where: { $0.id == preferred }) ?? selected else { return nil }
         let text = prompt.text.trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : prompt
     }

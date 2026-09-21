@@ -266,12 +266,14 @@ final class ActionRunner {
         // extension names the app without it.
         let pathOnly = targets.pastesPathOnly(for: bundleIdentifier) ?? target?.pastesPathOnly ?? false
         // The prompt, if 入口 attaches one: a first ⌘V before the files, or
-        // folded into the one line a terminal gets. See `PastePlan`.
-        let plan = PastePlan.make(
-            urls: arrival.urls,
-            pathOnly: pathOnly,
-            prompt: preferences.prompt.attachment(for: .forward)?.text
-        )
+        // folded into the one line a terminal gets. See `PastePlan`. Which
+        // prompt, and whether it says where the last export stopped, depends
+        // on the chat the files came out of.
+        let chat = model.chatName(for: arrival.urls)
+        let urls = arrival.urls
+        let span = chat == nil ? nil : await Task.detached { WeChatNativeArchive.span(of: urls) }.value
+        let prompt = preferences.promptAttachment(for: .forward, chat: chat, span: span)
+        let plan = PastePlan.make(urls: arrival.urls, pathOnly: pathOnly, prompt: prompt?.text)
 
         // Written again here, not just in the extension: this is the process
         // that is about to press ⌘V, so it owns what ⌘V will produce.
@@ -302,6 +304,7 @@ final class ActionRunner {
                 plan: plan
             )
             model.consume(urls: arrival.urls, via: .forwarded(action, targetName: target?.displayName))
+            if let chat, let prompt, let span { preferences.chatMemory.advance(chat, prompt: prompt.id, to: span.end) }
             // No confirmation: the user is looking at the target app with their
             // files already pasted into it. Telling them it worked is a capsule
             // over the evidence — removed at the user's request, 2026-09-05.

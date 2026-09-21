@@ -91,6 +91,72 @@ enum QuickForwardFolderDelivery {
         }
     }
 
+    /// Unpacks ZIPs Dukou built itself, one folder each, with the Markdown
+    /// note named after its folder: a vault full of 聊天记录.md is a vault of
+    /// notes nobody can tell apart.
+    ///
+    /// `tar` is safe here where it is not for WeChat's own ZIP: every entry
+    /// was written by `WeChatExportArchive.merge` from names it had already
+    /// validated. Each folder is complete before it appears under its final
+    /// name, and nothing can fail after that, so there is nothing to roll back.
+    static func saveUnpacked(_ urls: [URL], to folder: URL, checkCancellation: () throws -> Void) throws -> [URL] {
+        try checkCancellation()
+        let scoped = folder.startAccessingSecurityScopedResource()
+        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+        try validateFolder(folder)
+        let destination = folder.resolvingSymlinksInPath()
+        let staging = try makeStagingDirectory(in: destination, checkCancellation: checkCancellation)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        var published: [URL] = []
+        for (index, source) in urls.enumerated() {
+            try checkCancellation()
+            var name = DisplayName.sanitize((source.lastPathComponent as NSString).deletingPathExtension)
+            while name.utf8.count > 200 { name.removeLast() }
+            let unpacked = staging.appendingPathComponent(String(index), isDirectory: true)
+            try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            try extract(source, to: unpacked, checkCancellation: checkCancellation)
+            let note = unpacked.appendingPathComponent("聊天记录.md")
+            if FileManager.default.fileExists(atPath: note.path) {
+                try FileManager.default.moveItem(at: note, to: unpacked.appendingPathComponent(name + ".md"))
+            }
+            var number = 1
+            while true {
+                try checkCancellation()
+                let candidate = destination.appendingPathComponent(uniqueName(name, number: number), isDirectory: true)
+                let result = unpacked.withUnsafeFileSystemRepresentation { source in
+                    candidate.withUnsafeFileSystemRepresentation { target in
+                        renamex_np(source!, target!, UInt32(RENAME_EXCL))
+                    }
+                }
+                if result == 0 { published.append(candidate); break }
+                let code = errno
+                guard code == EEXIST || code == ENOTEMPTY else { throw posixError(code, url: candidate) }
+                number += 1
+            }
+        }
+        return published
+    }
+
+    private static func extract(_ archive: URL, to directory: URL, checkCancellation: () throws -> Void) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        process.arguments = ["-x", "-f", archive.path, "-C", directory.path]
+        process.environment = ["PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8"]
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        defer {
+            if process.isRunning { process.terminate() }
+            process.waitUntilExit()
+        }
+        while process.isRunning {
+            try checkCancellation()
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        guard process.terminationReason == .exit, process.terminationStatus == 0 else { throw Failure.invalidSource }
+    }
+
     private struct Identity: Equatable {
         let device: dev_t
         let inode: ino_t

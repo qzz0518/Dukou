@@ -52,6 +52,8 @@ One step further, Quick WeChat forward and Quick Moments forward (experimental) 
 - **Quick WeChat forward (experimental).** Name a group and a count; Dukou selects and merge-forwards in WeChat, then pastes the ZIP into the current app or saves it to a folder. Photos and videos are optional, batches past 100 can be combined into one ZIP, and ESC stops it.
 - **Offline HTML preview.** An `index.html` inside the ZIP for browsing the chat as bubbles in your browser: search, filter by date, view images, play audio and video.
 - **Quick Moments forward (experimental).** Export a number of recent posts as a time-ordered TXT with the photos and videos in the same ZIP. Downloading is slow; ESC stops it.
+- **Resume and per-chat prompts.** Each chat remembers its own prompt, and sending the same chat again asks for only the messages after the last export.
+- **Markdown export.** Saving a quick WeChat forward to a folder can produce a Markdown note with its attachments, ready for an Obsidian vault.
 - **Bulk text backups.** Save a quick forward to a folder and you have a backup: chats and Moments as time-ordered TXT, photos and videos if you want them, named by chat, time range and count.
 - **Safe updates.** Sparkle checks for signed releases and downloads only from GitHub Releases.
 - **Simplified Chinese and English** throughout.
@@ -89,7 +91,7 @@ Download the latest `Dukou-*.dmg` from [Releases](https://github.com/qzz0518/Duk
 
 ## Known issue
 
-**On some WeChat accounts, Quick WeChat forward and Quick Moments forward cannot read WeChat's interface and report "A unique matching group was not found".** Manual multi-select and forwarding to Dukou's entries are unaffected.
+**On some WeChat accounts, Quick WeChat forward and Quick Moments forward cannot read WeChat's interface and report that WeChat does not expose its controls for this account.** Manual multi-select and forwarding to Dukou's entries are unaffected.
 
 - Symptom: Accessibility is granted, yet WeChat exposes only the window shell (the window, its three traffic-light buttons and the menu bar). The session list, chat title and messages are absent. Reinstalling, re-granting the permission, or changing macOS or WeChat builds does not help.
 - Cause: since WeChat 4.1, WeChat itself decides whether to expose its controls, and that state follows the WeChat account rather than Dukou or the system. On the same Mac with the same WeChat build, some accounts have a control tree and some do not; the Windows WeChat automation community has documented the same per-account split ([pywechat #256](https://github.com/Hello-Mr-Crab/pywechat/issues/256), [#276](https://github.com/Hello-Mr-Crab/pywechat/issues/276)).
@@ -100,6 +102,7 @@ Download the latest `Dukou-*.dmg` from [Releases](https://github.com/qzz0518/Duk
 | Data | What Dukou does with it |
 |---|---|
 | The ZIP WeChat exports | Kept as is in Dukou's own container; only dates and counts are read, for naming |
+| The open chat's name | With Accessibility granted, read once from WeChat's window when a forward arrives, to name the file and remember a prompt per chat; stored on this Mac only |
 | Moments text and media | Read only when you start a Moments forward, packed into a ZIP under the same retention as chats |
 | Clipboard | Files, the attached prompt, or the paths a terminal asked for |
 | Network | Software updates only, downloaded only from GitHub Releases |

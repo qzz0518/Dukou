@@ -144,11 +144,6 @@ struct OnboardingFlow: View {
             ShareEntryList(probe: probe, spacing: Space.m)
                 .padding(.top, 20)
 
-            Text(L10n.text("以后随时能在设置 → 入口 里改。"))
-                .font(Typo.paneCaption)
-                .foregroundStyle(Theme.inkTertiary)
-                .padding(.top, 14)
-
             StepFooter(next: (L10n.text("继续"), { step = .shelf }))
                 .padding(.top, 20)
         }

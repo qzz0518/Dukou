@@ -164,34 +164,28 @@ struct SettingsChoice<Value: Hashable>: Identifiable {
     var image: NSImage? = nil
 }
 
-/// An independent option with the same surface and focus treatment as the
-/// settings inputs. It keeps checkbox semantics and can be combined with peers.
-struct SettingsOptionToggleStyle: ToggleStyle {
-    let symbol: String
+/// An independent option, sized to its label so several sit in one row. The
+/// full-width tile this replaces made the optional extras the heaviest things
+/// on a page whose point is a group name and a button. Checkbox semantics.
+struct SettingsChipToggleStyle: ToggleStyle {
     @Environment(\.isEnabled) private var isEnabled
     @FocusState private var focused: Bool
     @State private var hovering = false
 
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {
-            HStack(spacing: Space.s) {
-                Image(systemName: symbol)
+            HStack(spacing: 6) {
+                Image(systemName: configuration.isOn ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(configuration.isOn ? Theme.accent : Theme.inkSecondary)
-                    .frame(width: 16)
+                    .foregroundStyle(configuration.isOn ? Theme.controlOn : Theme.inputStroke)
                     .accessibilityHidden(true)
                 configuration.label
                     .font(SettingsControlMetrics.font)
                     .foregroundStyle(Theme.ink)
-                Spacer(minLength: Space.s)
-                Image(systemName: configuration.isOn ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(configuration.isOn ? Theme.controlOn : Theme.inputStroke)
-                    .accessibilityHidden(true)
+                    .lineLimit(1)
             }
             .padding(.horizontal, SettingsControlMetrics.inset)
-            .frame(height: SettingsControlMetrics.height + Space.xs)
-            .frame(maxWidth: .infinity)
+            .frame(height: SettingsControlMetrics.height)
             .background(configuration.isOn ? Theme.accentSoft : (hovering && isEnabled ? Theme.hover : Theme.sunken),
                         in: RoundedRectangle(cornerRadius: SettingsControlMetrics.radius))
             .overlay {
@@ -202,6 +196,7 @@ struct SettingsOptionToggleStyle: ToggleStyle {
             .contentShape(RoundedRectangle(cornerRadius: SettingsControlMetrics.radius))
         }
         .buttonStyle(PlainPressButtonStyle(staticFeedback: true))
+        .fixedSize()
         .focused($focused)
         .focusEffectDisabled()
         .modifier(SettingsFocusRing(focused: focused))

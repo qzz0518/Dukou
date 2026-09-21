@@ -162,7 +162,11 @@ final class AppModel: ObservableObject {
         // needs: replaying one hours later would paste into someone else's app.
         var recorded = false
         for batch in batches where batch.isFirstSeen {
-            recorded = announce(batch, reader: reader) || recorded
+            if comesFromOpenChat(batch) {
+                nameThenAnnounce(batch, reader: reader)
+            } else {
+                recorded = announce(batch, reader: reader) || recorded
+            }
         }
         if recorded { publish(reader.loadBatches()) }
 
@@ -182,6 +186,66 @@ final class AppModel: ObservableObject {
         if let anchor = selectionAnchor, !shelfItems.contains(where: { $0.id == anchor }) {
             selectionAnchor = nil
         }
+    }
+
+    // MARK: - Chat name
+
+    /// How long after a share the chat on screen is still taken to be the one
+    /// it came from. A batch found later than this — Dukou was not running, or
+    /// intake was held back by a quick forward — keeps the name WeChat gave it.
+    private static let chatNameWindow: TimeInterval = 20
+    private static let chatNameWorker = DispatchQueue(label: "dev.dukou.chat-name", qos: .userInitiated)
+
+    /// A share made by hand says nothing about which conversation it came out
+    /// of, and the extension cannot ask: it holds no Accessibility permission.
+    /// The app can, for the moment WeChat is still in front with that chat open.
+    private func comesFromOpenChat(_ batch: ReadyBatch) -> Bool {
+        batch.items.count == 1
+            && batch.items[0].url.pathExtension.lowercased() == "zip"
+            && Date().timeIntervalSince(batch.createdAt) < Self.chatNameWindow
+            && NSWorkspace.shared.frontmostApplication?.bundleIdentifier == WeChatAccessibility.bundleIdentifier
+            && AXIsProcessTrusted()
+    }
+
+    /// Names the export after its chat the way a quick forward does, then lets
+    /// the batch arrive. The name comes first because a forward pastes the
+    /// file's URL: renaming after the paste would hand the target a dead path.
+    private func nameThenAnnounce(_ batch: ReadyBatch, reader: InboxReader) {
+        let original = batch.items[0].url
+        Task { [weak self] in
+            let chat: String? = await withCheckedContinuation { continuation in
+                Self.chatNameWorker.async {
+                    let chat = try? WeChatAccessibility.currentChat()
+                    if let chat, !chat.isEmpty {
+                        try? WeChatExportArchive.rename(
+                            batch, chat: chat, fallbackCount: nil, exportedAt: batch.createdAt, requiringRecords: true
+                        )
+                    }
+                    continuation.resume(returning: chat)
+                }
+            }
+            guard let self else { return }
+            if let chat, !chat.isEmpty { try? reader.recordChatName(chat, for: batch.id) }
+            let current = reader.batch(at: batch.directory) ?? batch
+            // The extension put the old path on the clipboard before it exited.
+            // Only that exact content is replaced: anything the user has copied
+            // since is theirs.
+            if let renamed = current.items.first?.url, renamed != original,
+               let held = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+               held.map(\.standardizedFileURL.path) == [original.standardizedFileURL.path] {
+                FilePasteboard.write([renamed])
+            }
+            _ = self.announce(current, reader: reader)
+            self.publish(reader.loadBatches())
+        }
+    }
+
+    /// The chat the batch these files belong to came out of, if they are one
+    /// batch and Dukou knew.
+    func chatName(for urls: [URL]) -> String? {
+        let ids = batchIDs(for: urls)
+        guard ids.count == 1, let id = ids.first else { return nil }
+        return batch(id: id)?.chatName
     }
 
     /// Returns true when it wrote an outcome, so the caller knows the batches it

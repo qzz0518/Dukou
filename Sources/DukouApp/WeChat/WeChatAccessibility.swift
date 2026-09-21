@@ -6,13 +6,14 @@ import Foundation
 import Vision
 
 enum WeChatAutomationError: Error, LocalizedError {
-    case notRunning, wrongChat, busyChat, focusChanged, historyIncomplete, noMessages
+    case notRunning, interfaceHidden, wrongChat, busyChat, focusChanged, historyIncomplete, noMessages
     case selection, loading, screenRecording, unsupportedLayout, missingShare, ambiguousReceipt, receiptTimeout, invalidArchive, timeRangeUnavailable
     case control(String)
 
     var errorDescription: String? {
         switch self {
         case .notRunning: L10n.text("请先打开并登录微信。")
+        case .interfaceHidden: L10n.text("微信没有向这个账号开放界面控件，快捷转发用不了，重装或重新授权无效。请在微信里手动多选后转发到 Dukou。")
         case .wrongChat: L10n.text("没有找到唯一匹配的群聊。请先在微信中打开这个群，再重新执行。")
         case .busyChat: L10n.text("请先关闭微信的聊天记录窗口，或退出正在进行的多选、转发。")
         case .focusChanged: L10n.text("前台应用或群聊发生了变化，已停止微信操作。")
@@ -166,9 +167,38 @@ final class WeChatAccessibility {
 
     static func currentChat() throws -> String {
         let probe = try WeChatAccessibility(chat: "", cancellation: WeChatCancellation(), progress: { _ in })
-        guard let node = try probe.scan().first(where: { $0.id == "current_chat_name_label" }), let name = node.strings.first else { throw WeChatAutomationError.wrongChat }
+        guard let node = try probe.scan().first(where: { $0.id == "current_chat_name_label" }), let name = node.strings.first else {
+            throw probe.interfaceIsHidden ? WeChatAutomationError.interfaceHidden : WeChatAutomationError.wrongChat
+        }
         return WeChatForwardPreset.normalizedChat(name)
     }
+
+    /// See `WeChatInterfaceVisibility`. A handful of reads — the windows and
+    /// their first level — so the settings panes can ask before the user has
+    /// filled anything in. A hidden or minimised WeChat is not judged: what Qt
+    /// publishes for a window nobody can see is not evidence about the account.
+    static func interfaceVisibility() -> WeChatInterfaceVisibility {
+        guard AXIsProcessTrusted(),
+              let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first,
+              !app.isHidden else { return .unknown }
+        return interfaceVisibility(pid: app.processIdentifier)
+    }
+
+    static func interfaceVisibility(pid: pid_t) -> WeChatInterfaceVisibility {
+        let root = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(root, 1)
+        let windows = (wcAttribute(root, "AXWindows") as? [AXUIElement] ?? []).filter {
+            (wcAttribute($0, "AXMinimized") as? Bool) != true
+        }
+        return .evaluate(windows.map { window in
+            (wcAttribute(window, "AXChildren") as? [AXUIElement] ?? []).map {
+                .init(role: wcAttribute($0, "AXRole") as? String ?? "",
+                      childCount: (wcAttribute($0, "AXChildren") as? [AXUIElement])?.count ?? 0)
+            }
+        })
+    }
+
+    private var interfaceIsHidden: Bool { Self.interfaceVisibility(pid: app.processIdentifier) == .hidden }
 
     /// Opens the account pane only for HTML exports and closes only the
     /// settings window this probe created. It never touches account controls,
@@ -524,6 +554,10 @@ final class WeChatAccessibility {
         while NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier && clock() < deadline { try pause(0.04) }
         try frontmost()
         if !wasFrontmost { try pause(0.15) }
+        // Before anything is looked for: an account WeChat shows no controls
+        // for fails every search below, and 「没有找到群聊」 would send the user
+        // off to fix a name that was never the problem.
+        guard !interfaceIsHidden else { throw WeChatAutomationError.interfaceHidden }
         let nodes = try scan()
         guard !nodes.contains(where: { $0.id == "chat_log_message_list" || $0.id == "cancel_btn" }), control("合并转发", in: nodes) == nil else { throw WeChatAutomationError.busyChat }
         if chatMatches(nodes) { return }

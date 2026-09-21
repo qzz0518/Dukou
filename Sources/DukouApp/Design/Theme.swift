@@ -229,7 +229,10 @@ enum Metrics {
     static let settingsNavWidth: CGFloat = 200
     /// The navigation column runs to the top of the window and the traffic
     /// lights are drawn over it, so the first item starts below them.
-    static let settingsTrafficLightInset: CGFloat = 38
+    static let settingsTrafficLightInset: CGFloat = 52
+    /// What the pane's content keeps clear of the transparent title bar, on top
+    /// of its own padding.
+    static let settingsTitleBarClearance: CGFloat = 14
 
     /// The first-run guide. Larger than the settings window because it is read
     /// once, at full attention, and every step has to fit without scrolling —

@@ -94,7 +94,7 @@ struct ShareEntryList: View {
         case .shelf: L10n.text("放到暂存架，自己拖到任何 App。")
         case .codex: L10n.text("激活 ChatGPT 并直接粘贴到输入框。")
         case .claude: L10n.text("激活 Claude 并直接粘贴到输入框。")
-        case .clipboard: L10n.text("只放进剪贴板，去哪儿按 ⌘V 由你决定。")
+        case .clipboard: L10n.text("只放进剪贴板。")
         case .custom: L10n.text("转发时从你自己的清单里挑一个 App，激活它并粘贴。")
         }
     }

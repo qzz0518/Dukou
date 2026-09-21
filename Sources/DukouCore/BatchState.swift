@@ -75,6 +75,12 @@ public struct BatchState: Codable, Sendable, Hashable {
     /// Nil for every other entry, and nil in every state file written before
     /// this field existed.
     public let targetName: String?
+    /// The WeChat conversation the export came out of, when Dukou could tell:
+    /// the group a quick forward was run on, or the chat that was open when a
+    /// share arrived. The per-chat prompt and the 续聊 cursor are keyed on it,
+    /// including for a batch sent again from 记录 days later. Nil in every
+    /// state file written before this field existed.
+    public let chatName: String?
 
     public init(
         shelved: [UUID],
@@ -82,6 +88,7 @@ public struct BatchState: Codable, Sendable, Hashable {
         action: ShareAction? = nil,
         clearedAt: Date? = nil,
         targetName: String? = nil,
+        chatName: String? = nil,
         schemaVersion: Int = currentSchemaVersion
     ) {
         self.schemaVersion = schemaVersion
@@ -90,6 +97,7 @@ public struct BatchState: Codable, Sendable, Hashable {
         self.action = action
         self.clearedAt = clearedAt
         self.targetName = targetName
+        self.chatName = chatName
     }
 
     /// The state a batch gets the first time the app ever sees it.
@@ -143,6 +151,7 @@ public struct BatchState: Codable, Sendable, Hashable {
             action: action,
             clearedAt: clearedAt,
             targetName: targetName,
+            chatName: chatName,
             schemaVersion: schemaVersion
         )
     }
@@ -157,6 +166,19 @@ public struct BatchState: Codable, Sendable, Hashable {
             action: action,
             clearedAt: clearedAt,
             targetName: targetName ?? self.targetName,
+            chatName: chatName,
+            schemaVersion: schemaVersion
+        )
+    }
+
+    public func withChatName(_ chatName: String) -> BatchState {
+        BatchState(
+            shelved: shelved,
+            outcome: outcome,
+            action: action,
+            clearedAt: clearedAt,
+            targetName: targetName,
+            chatName: chatName,
             schemaVersion: schemaVersion
         )
     }

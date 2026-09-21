@@ -157,7 +157,7 @@ enum WeChatHTMLPreview {
         """
     }
 
-    private static func attachment(_ path: String, prefix: String) -> Attachment? {
+    static func attachment(_ path: String, prefix: String) -> Attachment? {
         let fullPath = prefix + "/" + path
         let components = fullPath.split(separator: "/", omittingEmptySubsequences: false)
         guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),

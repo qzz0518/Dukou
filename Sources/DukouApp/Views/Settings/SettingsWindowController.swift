@@ -54,6 +54,12 @@ final class SettingsWindowController {
         // 28 pt on top of it, so a 560 pt design came out 588 pt tall. The size
         // here is not negotiable, so the controller does not get a vote.
         controller.sizingOptions = []
+        // The hosting view keeps a title bar's worth of safe area at the top
+        // even though the bar is transparent, and the fixed 560 pt design was
+        // centred in what was left: everything sat 14 pt low with its last
+        // 14 pt outside the window. Nothing showed it until a bar was pinned
+        // to the bottom edge (2026-09-21).
+        controller.safeAreaRegions = []
         let window = NSWindow(contentViewController: controller)
         window.title = ""
         window.titleVisibility = .hidden

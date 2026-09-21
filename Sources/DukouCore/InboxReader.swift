@@ -48,6 +48,8 @@ public struct ReadyBatch: Sendable, Hashable, Identifiable {
     /// The app a 「发送到自定义」 batch was pointed at, as it was named on screen
     /// when the user picked it. Nil for every other entry.
     public let targetName: String?
+    /// The WeChat conversation this export came out of, when Dukou could tell.
+    public let chatName: String?
     /// When the last item left the shelf, if it ever did. The retention sweep
     /// ages a batch from here rather than from `createdAt`, so a file parked on
     /// the shelf past the window is not trashed the instant it is dragged out.
@@ -66,6 +68,7 @@ public struct ReadyBatch: Sendable, Hashable, Identifiable {
         items: [ReadyItem],
         outcome: BatchOutcome?,
         targetName: String? = nil,
+        chatName: String? = nil,
         clearedAt: Date? = nil,
         isFirstSeen: Bool
     ) {
@@ -76,6 +79,7 @@ public struct ReadyBatch: Sendable, Hashable, Identifiable {
         self.items = items
         self.outcome = outcome
         self.targetName = targetName
+        self.chatName = chatName
         self.clearedAt = clearedAt
         self.isFirstSeen = isFirstSeen
     }
@@ -193,6 +197,7 @@ public struct InboxReader {
             items: items,
             outcome: state.outcome,
             targetName: state.targetName,
+            chatName: state.chatName,
             clearedAt: state.clearedAt,
             isFirstSeen: stored == nil && initializing
         )
@@ -248,6 +253,10 @@ public struct InboxReader {
         for batchID: UUID
     ) throws {
         try mutateState(batchID: batchID) { $0.withOutcome(outcome, targetName: targetName) }
+    }
+
+    public func recordChatName(_ chatName: String, for batchID: UUID) throws {
+        try mutateState(batchID: batchID) { $0.withChatName(chatName) }
     }
 
     public func state(forBatch batchID: UUID) -> BatchState? {

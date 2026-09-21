@@ -25,6 +25,9 @@ final class WeChatQuickForward: ObservableObject {
     private let authorization: AccessibilityAuthorization
     private let preferences: Preferences
     private var cancellation: WeChatCancellation?
+    private var lastFolder: URL?
+    private var lastTarget: (id: String, name: String, pastePath: Bool)?
+    private var statusExpiry: Task<Void, Never>?
     private var observers = Set<AnyCancellable>()
     /// Only a full forward raises it. `readCurrentChat` is one AX read with no
     /// synthesized input, so there is nothing to keep the user's hands off.
@@ -76,6 +79,12 @@ final class WeChatQuickForward: ObservableObject {
         panel.prompt = L10n.text("选择文件夹")
         panel.directoryURL = draft.destinationFolder
         guard panel.runModal() == .OK, let folder = panel.url, !isBusy else { return }
+        save(to: folder)
+    }
+    private func save(to folder: URL) {
+        if draft.destinationFolder == nil, !draft.targetBundleIdentifier.isEmpty {
+            lastTarget = (draft.targetBundleIdentifier, draft.targetName, draft.pastePath)
+        }
         var preset = draft
         preset.destinationFolder = folder
         preset.targetBundleIdentifier = ""
@@ -83,6 +92,27 @@ final class WeChatQuickForward: ObservableObject {
         preset.pastePath = false
         draft = preset
         error = nil
+    }
+    /// The two halves of 送到. A preset holds one destination, so flipping
+    /// between them would otherwise forget the other side each time; what was
+    /// there is kept for as long as the window is, which is as long as anyone
+    /// flips back and forth.
+    func showApplications() {
+        guard !isBusy, let folder = draft.destinationFolder else { return }
+        lastFolder = folder
+        var preset = draft
+        preset.destinationFolder = nil
+        if let lastTarget {
+            preset.targetBundleIdentifier = lastTarget.id
+            preset.targetName = lastTarget.name
+            preset.pastePath = lastTarget.pastePath
+        }
+        draft = preset
+        error = nil
+    }
+    func showFolder() {
+        guard !isBusy, draft.destinationFolder == nil else { return }
+        if let lastFolder { save(to: lastFolder) } else { chooseFolder() }
     }
     func use(_ preset: WeChatForwardPreset) { guard !isBusy else { return }; draft = preset; error = nil }
     /// The amount field's text. Held as a count, shown as digits, and filtered
@@ -179,6 +209,21 @@ final class WeChatQuickForward: ObservableObject {
         }
     }
 
+    /// A finished run's summary is news for a few seconds, not a fixture: the
+    /// bar it is shown in is pinned, and left alone the line would stand there
+    /// until the next run in place of the warning that belongs before one. A
+    /// failure is `error`, which stays until something is changed.
+    private func expireStatus() {
+        statusExpiry?.cancel()
+        let shown = status
+        statusExpiry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard let self, !Task.isCancelled, !self.isBusy, self.status == shown else { return }
+            self.status = nil
+            self.elapsedSeconds = nil
+        }
+    }
+
     private func run(_ preset: WeChatForwardPreset, targetPID: pid_t?, requestedAt: Date, token: WeChatCancellation) async {
         let started = ProcessInfo.processInfo.systemUptime
         var deferredIntake = false
@@ -188,6 +233,7 @@ final class WeChatQuickForward: ObservableObject {
             elapsedSeconds = ProcessInfo.processInfo.systemUptime - started
             cancellation = nil
             isBusy = false
+            expireStatus()
         }
         do {
             try token.check()
@@ -225,16 +271,16 @@ final class WeChatQuickForward: ObservableObject {
             let counts = Array(capture.batchMessageCounts.reversed())
             guard !originals.isEmpty, originals.count == capture.directories.count, originals.count == counts.count,
                   originals.allSatisfy({ $0.items.count == 1 }) else { throw WeChatAutomationError.invalidArchive }
-            let merging = preset.mergeArchives && originals.count > 1
+            let merging = (preset.mergeArchives || preset.savesMarkdown) && originals.count > 1
             let removingMedia = !preset.saveImages || !preset.saveVideos
-            let repackaging = merging || preset.htmlPreview || removingMedia
-            status = preset.htmlPreview ? L10n.text("正在生成 HTML 预览…")
+            let repackaging = merging || preset.htmlPreview || preset.savesMarkdown || removingMedia
+            status = preset.savesMarkdown ? L10n.text("正在生成 Markdown…") : preset.htmlPreview ? L10n.text("正在生成 HTML 预览…")
                 : merging ? L10n.text("正在合并聊天记录…") : removingMedia ? L10n.text("正在整理聊天记录…") : L10n.text("正在整理文件名…")
             let preparedDirectories: [URL] = try await withCheckedThrowingContinuation { continuation in
                 Self.worker.async {
                     continuation.resume(with: Result {
                         try WeChatExportArchive.prepare(originals, chat: preset.chat, fallbackCounts: counts,
-                                                        mergeArchives: preset.mergeArchives, htmlPreview: preset.htmlPreview,
+                                                        mergeArchives: preset.mergeArchives, htmlPreview: preset.htmlPreview, markdown: preset.savesMarkdown,
                                                         saveImages: preset.saveImages, saveVideos: preset.saveVideos, in: inbox, selfSender: capture.selfSender, exportedAt: requestedAt,
                                                         checkCancellation: token.check)
                     })
@@ -255,20 +301,25 @@ final class WeChatQuickForward: ObservableObject {
                 let _: [URL] = try await withCheckedThrowingContinuation { continuation in
                     Self.worker.async {
                         continuation.resume(with: Result {
-                            try QuickForwardFolderDelivery.save(urls, to: folder, checkCancellation: token.check)
+                            try preset.savesMarkdown
+                                ? QuickForwardFolderDelivery.saveUnpacked(urls, to: folder, checkCancellation: token.check)
+                                : QuickForwardFolderDelivery.save(urls, to: folder, checkCancellation: token.check)
                         })
                     }
                 }
             } else {
                 guard let targetPID else { throw AutoPaste.Failure.didNotBecomeActive(name: preset.targetName) }
                 status = L10n.format("正在粘贴到 %@…", preset.targetName)
-                let plan = PastePlan.make(
-                    urls: urls,
-                    pathOnly: preset.pastePath,
-                    prompt: preferences.prompt.attachment(for: .wechat)?.text
-                )
+                // Read from WeChat's own receipts: a merged ZIP's combined TXT
+                // no longer parses into dated records. Left as they were, the
+                // receipts have just been renamed, and `batches` has the names.
+                let natives = (repackaging ? originals : batches).flatMap { $0.items.map(\.url) }
+                let span = await Task.detached { WeChatNativeArchive.span(of: natives) }.value
+                let prompt = preferences.promptAttachment(for: .wechat, chat: preset.chat, span: span)
+                let plan = PastePlan.make(urls: urls, pathOnly: preset.pastePath, prompt: prompt?.text)
                 try await AutoPaste.pasteIntoRunning(pid: targetPID, bundleIdentifier: preset.targetBundleIdentifier, displayName: preset.targetName,
                                                    plan: plan, checkCancellation: token.check)
+                if let prompt, let span { preferences.chatMemory.advance(preset.chat, prompt: prompt.id, to: span.end) }
             }
             // Delivery has committed. A late cancellation must not strand
             // saved files without their receipt or remembered destination.
@@ -279,6 +330,7 @@ final class WeChatQuickForward: ObservableObject {
                 do {
                     try reader.markConsumed(itemIDs: Set(batch.items.map(\.id)), in: batch.id)
                     try reader.recordOutcome(BatchOutcome(kind: .delivered, at: Date()), targetName: destinationName, for: batch.id)
+                    try reader.recordChatName(preset.chat, for: batch.id)
                 } catch { savedOutcome = false }
             }
             stored.recordSuccess(preset)
@@ -286,7 +338,12 @@ final class WeChatQuickForward: ObservableObject {
             draft = stored.draft
             persist()
             if preset.destinationFolder != nil {
-                status = L10n.format("已保存 %d 个 ZIP 到 %@ · 约 %d 条消息", urls.count, destinationName, capture.messageCount)
+                // The folder's name, not its path: the bar has one line, and
+                // the folder itself opens beside it.
+                let folderName = preset.destinationFolder.map { $0.lastPathComponent.isEmpty ? $0.path : $0.lastPathComponent } ?? destinationName
+                status = preset.savesMarkdown
+                    ? L10n.format("已保存 Markdown 笔记到 %@ · 约 %d 条消息", folderName, capture.messageCount)
+                    : L10n.format("已保存 %d 个 ZIP 到 %@ · 约 %d 条消息", urls.count, folderName, capture.messageCount)
                 if !savedOutcome { error = L10n.text("文件已保存，但部分记录状态未能保存。") }
                 if let folder = preset.destinationFolder { NSWorkspace.shared.open(folder) }
             } else {

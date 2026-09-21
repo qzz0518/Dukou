@@ -273,6 +273,55 @@ final class WeChatExportArchiveTests: XCTestCase {
                        ["notes.docx", "聊天记录.txt"])
     }
 
+    func testMarkdownIsOneNoteAcrossBatchesWhateverMergingSays() throws {
+        let first = try batch([("聊天记录.txt", Data("·甲\n2026年9月8日 09:10\n[图片] photo.png\n".utf8)), ("images/photo.png", Data([1, 2, 3]))])
+        let second = try batch([("聊天记录.txt", Data("·乙\n2026年9月8日 10:20\n第二批\n".utf8))])
+        let prepared = try WeChatExportArchive.prepare([first, second], chat: "测试群", fallbackCounts: [1, 1], mergeArchives: false,
+                                                       htmlPreview: false, markdown: true, in: temporary.inbox)
+        XCTAssertEqual(prepared.count, 1)
+        let item = try XCTUnwrap(InboxReader(inbox: temporary.inbox).batch(at: prepared[0])).items[0]
+        let extracted = try unzip(item.url)
+        let note = try String(contentsOf: extracted.appendingPathComponent("聊天记录.md"), encoding: .utf8)
+        XCTAssertTrue(note.contains("messages: 2"))
+        XCTAssertTrue(note.contains("![photo.png](batches/0001/images/photo.png)"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: extracted.appendingPathComponent("batches/0001/images/photo.png").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: extracted.appendingPathComponent("index.html").path))
+    }
+
+    func testAShareThatIsNotAChatExportKeepsItsName() throws {
+        let file = try batch([("报告.docx", Data([1, 2, 3]))])
+        try WeChatExportArchive.rename(file, chat: "测试群", fallbackCount: nil, requiringRecords: true)
+        XCTAssertEqual(try XCTUnwrap(InboxReader(inbox: temporary.inbox).batch(at: file.directory)).items[0].displayName, "聊天记录.zip")
+
+        let export = try batch([("聊天记录.txt", Data("·甲\n2026年9月8日 11:25\n正文\n".utf8))])
+        try WeChatExportArchive.rename(export, chat: "测试群", fallbackCount: nil, requiringRecords: true)
+        let renamed = try XCTUnwrap(InboxReader(inbox: temporary.inbox).batch(at: export.directory))
+        XCTAssertTrue(renamed.items[0].displayName.hasPrefix("测试群_20260908"))
+    }
+
+    func testChatNameSurvivesLaterStateChanges() throws {
+        let export = try batch([("聊天记录.txt", Data("·甲\n2026年9月8日 11:25\n正文\n".utf8))])
+        let reader = InboxReader(inbox: temporary.inbox)
+        try reader.recordChatName("测试群", for: export.id)
+        try reader.recordOutcome(BatchOutcome(kind: .delivered, at: Date()), targetName: "Claude", for: export.id)
+        try reader.markConsumed(itemIDs: Set(export.items.map(\.id)), in: export.id)
+        let read = try XCTUnwrap(reader.batch(at: export.directory))
+        XCTAssertEqual(read.chatName, "测试群")
+        XCTAssertEqual(read.targetName, "Claude")
+    }
+
+    func testSpanCoversNativeExportsAndIgnoresWhatHasNoDates() throws {
+        let first = try batch([("聊天记录.txt", Data("·甲\n2026年9月8日 09:10\n一\n\n·甲\n2026年9月8日 09:40\n二\n".utf8))])
+        let second = try batch([("聊天记录.txt", Data("·乙\n2026年9月9日 10:20\n三\n".utf8))])
+        let other = try batch([("报告.docx", Data([1]))])
+        let span = try XCTUnwrap(WeChatNativeArchive.span(of: [first, second, other].map { $0.items[0].url }))
+        XCTAssertEqual(span.end.timeIntervalSince(span.start), 25 * 3600 + 10 * 60)
+        XCTAssertNil(WeChatNativeArchive.span(of: [other.items[0].url]))
+        let merged = try WeChatExportArchive.merge([first, second], chat: "测试群", fallbackCounts: [2, 1], in: temporary.inbox)
+        let mergedURL = try XCTUnwrap(InboxReader(inbox: temporary.inbox).batch(at: merged)).items[0].url
+        XCTAssertNil(WeChatNativeArchive.span(of: [mergedURL]), "The combined TXT is not a native transcript")
+    }
+
     private func batch(_ files: [(String, Data)]) throws -> ReadyBatch {
         try batch(data: zip(files.map { ($0.0, $0.1, 0o100600) }))
     }

@@ -22,6 +22,8 @@ final class MomentsQuickForward: ObservableObject {
     private let defaults: UserDefaults
     private let hud = AutomationHUD()
     private var token: WeChatCancellation?
+    private var lastFolder: URL?
+    private var statusExpiry: Task<Void, Never>?
     private var observers = Set<AnyCancellable>()
     private static let key = "momentsQuickForward.v1"
     private static let worker = DispatchQueue(label: "dev.dukou.moments.accessibility", qos: .userInitiated)
@@ -61,6 +63,31 @@ final class MomentsQuickForward: ObservableObject {
         guard panel.runModal() == .OK, let folder = panel.url else { return }
         draft.destinationFolder = folder; draft.pastePath = false
     }
+    /// The two halves of 送到; see `WeChatQuickForward`. The target app stays in
+    /// the draft here, so only the folder needs remembering.
+    func showApplications() {
+        guard !isBusy, let folder = draft.destinationFolder else { return }
+        lastFolder = folder
+        draft.destinationFolder = nil
+    }
+    func showFolder() {
+        guard !isBusy, draft.destinationFolder == nil else { return }
+        if let lastFolder { draft.destinationFolder = lastFolder; draft.pastePath = false } else { chooseFolder() }
+    }
+    /// A finished run's summary is news for a few seconds, not a fixture: the
+    /// bar it is shown in is pinned, and left alone the line would stand there
+    /// until the next run. See `WeChatQuickForward`.
+    private func expireStatus() {
+        statusExpiry?.cancel()
+        let shown = status
+        statusExpiry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard let self, !Task.isCancelled, !self.isBusy, self.status == shown else { return }
+            self.status = nil
+            self.elapsedSeconds = nil
+        }
+    }
+
     func cancel() {
         guard isBusy, token != nil else { return }
         token?.cancel(); status = L10n.text("正在停止…")
@@ -97,6 +124,7 @@ final class MomentsQuickForward: ObservableObject {
             if intakeDeferred { model.resumeIntake(); shelf.resumePresentation() }
             elapsedSeconds = ProcessInfo.processInfo.systemUptime - started
             self.token = nil; isBusy = false
+            expireStatus()
         }
         do {
             try token.check()
