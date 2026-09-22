@@ -1,16 +1,326 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="robots" content="noindex">
-    <title>Dukou Updates</title>
+    <title>Dukou.</title>
+    <meta name="description" content="批量转发微信消息给任意 Agent，也可以保存为本地离线备份。">
+    <meta name="theme-color" content="#101113" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta property="og:title" content="Dukou.">
+    <meta property="og:description" content="批量转发微信消息给任意 Agent，也可以保存为本地离线备份。">
+    <meta property="og:type" content="website">
+    <link rel="canonical" href="https://qzz0518.github.io/Dukou/">
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem('dukou-site-theme');
+          if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+        } catch (_) {}
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        --background: #ffffff;
+        --ink: #111214;
+        --text: #2b2c30;
+        --muted: #73747c;
+        --line: #e5e5e9;
+        --soft: #f3f3f5;
+        --accent: #25b783;
+        --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+        --font-serif: Charter, "Iowan Old Style", "Songti SC", serif;
+      }
+
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --background: #101113;
+        --ink: #f4f4f5;
+        --text: #d8d8dc;
+        --muted: #9a9aa3;
+        --line: #303036;
+        --soft: #222226;
+        --accent: #48d6a2;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          color-scheme: dark;
+          --background: #101113;
+          --ink: #f4f4f5;
+          --text: #d8d8dc;
+          --muted: #9a9aa3;
+          --line: #303036;
+          --soft: #222226;
+          --accent: #48d6a2;
+        }
+      }
+
+      * { box-sizing: border-box; }
+
+      html { background: var(--background); }
+
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--text);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a {
+        color: inherit;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 4px;
+      }
+
+      a:hover { color: var(--accent); }
+
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 5px;
+      }
+
+      .site-header {
+        max-width: 952px;
+        margin: 0 auto;
+        padding: 22px 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--ink);
+        font-size: 20px;
+        font-weight: 650;
+        letter-spacing: -0.03em;
+        text-decoration: none;
+      }
+
+      .brand-glyph {
+        display: grid;
+        width: 22px;
+        height: 22px;
+        place-items: center;
+        border-radius: 6px;
+        background: var(--accent);
+        color: #07140f;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .theme-toggle {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        background: transparent;
+        color: var(--ink);
+        font: 20px/1 var(--font-sans);
+        cursor: pointer;
+      }
+
+      .page {
+        max-width: 952px;
+        margin: 42px auto 0;
+        padding-bottom: 80px;
+      }
+
+      .reader-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 700px) 180px;
+        gap: 72px;
+        align-items: start;
+      }
+
+      .article {
+        min-width: 0;
+        font-family: var(--font-serif);
+        font-size: 20px;
+        line-height: 1.62;
+      }
+
+      h1,
+      h2 { font-family: var(--font-sans); color: var(--ink); }
+
+      h1 {
+        margin: 0 0 34px;
+        font-size: clamp(54px, 7vw, 76px);
+        font-weight: 680;
+        line-height: 1.05;
+        letter-spacing: -0.06em;
+      }
+
+      .title-mark {
+        background: linear-gradient(var(--accent), var(--accent)) left calc(100% - 0.03em) / 100% 3px no-repeat;
+        padding-bottom: 0.06em;
+      }
+
+      .article p {
+        max-width: 680px;
+        margin: 0 0 22px;
+      }
+
+      .requirements { color: var(--muted); }
+
+      .get {
+        margin-top: 60px;
+      }
+
+      .get h2 {
+        margin: 0 0 22px;
+        font-size: 29px;
+        font-weight: 650;
+        letter-spacing: -0.035em;
+      }
+
+      .get ul {
+        margin: 0;
+        padding-left: 24px;
+      }
+
+      .get li { margin: 8px 0; }
+
+      code {
+        padding: 2px 5px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--soft);
+        color: var(--ink);
+        font: 0.72em Menlo, monospace;
+        overflow-wrap: anywhere;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 28px;
+        padding-left: 18px;
+        border-left: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .sidebar h2 {
+        margin: 0 0 17px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .sidebar ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .sidebar li { margin: 0 0 14px; }
+
+      .footer {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 24px;
+        margin-top: 48px;
+        padding-top: 22px;
+        border-top: 1px solid var(--line);
+        align-items: baseline;
+        font-size: 14px;
+      }
+
+      .footer p {
+        margin: 0;
+        color: var(--muted);
+        font: italic 15px/1.5 var(--font-serif);
+        text-align: right;
+      }
+
+      @media (max-width: 1000px) {
+        .site-header,
+        .page { margin-inline: 32px; }
+
+        .reader-layout { grid-template-columns: minmax(0, 1fr); }
+        .sidebar { display: none; }
+        .article { max-width: 700px; }
+      }
+
+      @media (max-width: 600px) {
+        .site-header,
+        .page { margin-inline: 22px; }
+
+        .site-header { padding-block: 16px; }
+        .page { margin-top: 30px; padding-bottom: 54px; }
+        .article { font-size: 18px; }
+        h1 { margin-bottom: 28px; font-size: 48px; }
+        .get { margin-top: 48px; }
+        .get h2 { font-size: 26px; }
+        .footer { grid-template-columns: 1fr; }
+        .footer p { text-align: left; }
+      }
+    </style>
   </head>
   <body>
-    <main>
-      <h1>Dukou Updates</h1>
-      <p>This site hosts the signed Sparkle update feed for Dukou.</p>
-      <p><a href="https://github.com/qzz0518/Dukou">Source and releases</a></p>
-    </main>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="Dukou 首页">
+        <span class="brand-glyph" aria-hidden="true">D</span>
+        <span>Dukou</span>
+      </a>
+      <button class="theme-toggle" type="button" aria-label="切换深浅色外观" title="切换深浅色外观">☼</button>
+    </header>
+
+    <div class="page">
+      <div class="reader-layout">
+        <main class="article">
+          <h1><span class="title-mark">Dukou</span>.</h1>
+          <p>批量转发微信消息给任意 Agent，也可以保存为本地离线备份。Dukou 使用微信原生转发与导出，不读取数据库、不解密、不注入。</p>
+          <p class="requirements">macOS 14 或更高版本。</p>
+
+          <section class="get" aria-labelledby="get-title">
+            <h2 id="get-title">获取 Dukou</h2>
+            <ul>
+              <li><a href="https://github.com/qzz0518/Dukou/releases/latest">下载最新版</a></li>
+              <li>使用 Homebrew：<code>brew install --cask qzz0518/tap/dukou</code></li>
+              <li><a href="https://github.com/qzz0518/Dukou">在 GitHub 查看源码</a></li>
+              <li><a href="https://github.com/qzz0518/Dukou/issues">报告问题</a></li>
+            </ul>
+          </section>
+
+          <footer class="footer">
+            <a href="https://github.com/qzz0518/Dukou">Dukou on GitHub</a>
+            <p>Native, local, and made for macOS.</p>
+          </footer>
+        </main>
+
+        <aside class="sidebar" aria-label="Dukou 概览">
+          <h2>功能概览</h2>
+          <ul>
+            <li>微信原生转发</li>
+            <li>批量发送给 Agent</li>
+            <li>本地离线备份</li>
+            <li>仅更新检查联网</li>
+          </ul>
+        </aside>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const button = document.querySelector('.theme-toggle');
+        const media = window.matchMedia('(prefers-color-scheme: dark)');
+        const current = () => root.dataset.theme || (media.matches ? 'dark' : 'light');
+        button.addEventListener('click', () => {
+          const theme = current() === 'dark' ? 'light' : 'dark';
+          root.dataset.theme = theme;
+          try { localStorage.setItem('dukou-site-theme', theme); } catch (_) {}
+        });
+      })();
+    </script>
   </body>
 </html>
