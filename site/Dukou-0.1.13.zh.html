@@ -1,0 +1,100 @@
+<!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires updating signatures in appcasts that reference this file! This will involve re-running generate_appcast or sign_update.
+-->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<title>Dukou 0.1.13</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --ink: #1d1d1f; --text: #3a3a3c; --muted: #86868b;
+  --line: #e5e5ea; --soft: #f2f2f5;
+  --new: #16865f; --improved: #6a4fd0; --fixed: #1c8a4a; --other: #6e6e73;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e20; --ink: #f5f5f7; --text: #d1d1d6; --muted: #8e8e93;
+    --line: #38383c; --soft: #2a2a2e;
+    --new: #58d8a8; --improved: #b4a2ff; --fixed: #62d28c; --other: #aeaeb2;
+  }
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--new); text-underline-offset: 3px; }
+h1, h2, h3 { margin: 0; }
+.version { color: var(--ink); font-weight: 700; letter-spacing: -0.015em; }
+.meta { margin: 2px 0 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.summary { margin: 12px 0 0; color: var(--ink); }
+section { --tone: var(--other); }
+section.new { --tone: var(--new); }
+section.improved { --tone: var(--improved); }
+section.fixed { --tone: var(--fixed); }
+.tag {
+  display: inline-block;
+  padding: 1px 9px 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  color: var(--tone);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 18px;
+}
+section ul, section ol { margin: 0; padding: 0; list-style: none; }
+section ol { counter-reset: item; }
+section li { position: relative; padding-left: 16px; }
+section ul > li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0.62em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+section ol > li { counter-increment: item; padding-left: 20px; }
+section ol > li::before {
+  content: counter(item) ".";
+  position: absolute;
+  left: 0;
+  color: var(--tone);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+section p { margin: 8px 0 0; }
+code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--soft);
+  font: 0.9em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+body { padding: 16px 20px 20px; font-size: 13px; line-height: 1.55; }
+.version { font-size: 17px; line-height: 1.3; }
+.meta { font-size: 11.5px; }
+.summary { font-size: 13.5px; line-height: 1.5; }
+section { margin-top: 16px; }
+h3 { margin-bottom: 6px; }
+section li { margin: 5px 0; }
+</style>
+</head>
+<body>
+<article>
+<header>
+<h1 class="version">Dukou 0.1.13</h1>
+<p class="meta"><time datetime="2026-09-21">Build 14 · 2026年9月21日</time></p>
+</header>
+<section class="other"><ul><li>快捷转发页重新排版：选项更紧凑，「开始」按钮固定在窗口底部。</li><li>新增续聊：同一个群再次发送时，自动提示只处理上次之后的新消息；每个群可以记住自己的 Prompt。</li><li>快捷微信转发存到文件夹时可选 Markdown，得到笔记加附件的文件夹，可直接放进 Obsidian。</li></ul></section>
+</article>
+</body>
+</html>

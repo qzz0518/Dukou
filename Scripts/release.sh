@@ -36,6 +36,15 @@ if [ "$REQUIRE_TAG" = "1" ]; then
 		exit 1
 	fi
 fi
+# The feed step needs both notes; fail now rather than after notarization.
+if [ "$GENERATE_APPCAST" = "1" ]; then
+	for NOTES in "$ROOT/Resources/ReleaseNotes/$VERSION.md" "$ROOT/Resources/ReleaseNotes/$VERSION.zh.md"; do
+		if [ ! -f "$NOTES" ]; then
+			echo "missing ${NOTES#$ROOT/}" >&2
+			exit 1
+		fi
+	done
+fi
 
 IDENTITY="${IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk '/Developer ID Application:/ {print $2; exit}')}"
 if [ -z "$IDENTITY" ]; then
@@ -118,21 +127,32 @@ if [ "$GENERATE_APPCAST" = "1" ]; then
 		cp "$ROOT/site/appcast.xml" "$UPDATES_DIR/appcast.xml"
 	fi
 	cp "$DMG" "$UPDATES_DIR/"
-	# Release notes ride along under the archive's own name: generate_appcast
-	# signs them and links the copy GitHub Pages serves from site/.
-	if [ -f "$ROOT/site/Dukou-$VERSION.md" ]; then
-		cp "$ROOT/site/Dukou-$VERSION.md" "$UPDATES_DIR/"
-	fi
+	# Styled HTML from Resources/ReleaseNotes/<version>.md and <version>.zh.md:
+	# `Dukou-<version>.html` is the English default, `.zh.html` becomes the
+	# `xml:lang="zh"` link (generate_appcast only recognises two-letter codes).
+	# Full documents, so they are linked and signed rather than embedded.
+	swift "$ROOT/Scripts/release-notes.swift" sparkle \
+		"$VERSION" "$BUILD_NUMBER" "$(date +%Y-%m-%d)" "$UPDATES_DIR"
+	# Notes are served from GitHub Pages next to the appcast, not from the
+	# release assets. Deltas are disabled so every enclosure is the full DMG,
+	# and every version is kept: the history page is built from this feed.
+	# "Version History" in Sparkle's up-to-date alert opens the history page.
 	"$SPARKLE_TOOLS/generate_appcast" \
 		--download-url-prefix "https://github.com/qzz0518/Dukou/releases/download/$TAG/" \
 		--release-notes-url-prefix "https://qzz0518.github.io/Dukou/" \
+		--full-release-notes-url "https://qzz0518.github.io/Dukou/updates.html" \
 		--link "https://github.com/qzz0518/Dukou" \
+		--maximum-deltas 0 \
+		--maximum-versions 0 \
 		"$UPDATES_DIR"
+	swift "$ROOT/Scripts/release-notes.swift" history \
+		"$UPDATES_DIR/appcast.xml" "$UPDATES_DIR/updates.html"
 fi
 
 echo "release artifact: $DMG"
 echo "checksum: $DMG.sha256"
 if [ -f "$UPDATES_DIR/appcast.xml" ]; then
-	echo "signed appcast: $UPDATES_DIR/appcast.xml — copy it to site/ and commit to publish"
+	echo "signed appcast: $UPDATES_DIR/appcast.xml"
+	echo "publish: copy appcast.xml, Dukou-$VERSION*.html and updates.html from $UPDATES_DIR to site/, then commit"
 fi
 echo "homebrew cask: run Scripts/update-tap.sh once the GitHub Release exists"

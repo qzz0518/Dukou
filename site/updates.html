@@ -1,300 +1,327 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Dukou 版本历史</title>
-    <meta name="description" content="Dukou 的版本更新记录。">
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#101113" media="(prefers-color-scheme: dark)">
-    <link rel="canonical" href="https://qzz0518.github.io/Dukou/updates.html">
-    <style>
-      :root {
-        color-scheme: light dark;
-        --background: #ffffff;
-        --ink: #151517;
-        --text: #343438;
-        --muted: #717178;
-        --line: #dedee3;
-        --soft: #f1f1f3;
-        --accent: #16865f;
-      }
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dukou 版本历史 · Version History</title>
+<meta name="description" content="Dukou 的版本更新记录。Dukou release notes and version history.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1e1e20" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="https://qzz0518.github.io/Dukou/updates.html">
+<script>
+(() => {
+  const root = document.documentElement;
+  const param = new URLSearchParams(location.search).get('lang');
+  let stored = null;
+  try { stored = localStorage.getItem('release-notes-lang'); } catch (_) {}
+  const system = (navigator.languages || [navigator.language || '']).some((l) => /^zh/i.test(l)) ? 'zh' : 'en';
+  root.dataset.lang = (param === 'en' || param === 'zh') ? param : (stored || system);
+  root.lang = root.dataset.lang === 'en' ? 'en' : 'zh-CN';
+  window.switchLanguage = () => {
+    const next = root.dataset.lang === 'en' ? 'zh' : 'en';
+    root.dataset.lang = next;
+    root.lang = next === 'en' ? 'en' : 'zh-CN';
+    try { localStorage.setItem('release-notes-lang', next); } catch (_) {}
+  };
+})();
+</script>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --ink: #1d1d1f; --text: #3a3a3c; --muted: #86868b;
+  --line: #e5e5ea; --soft: #f2f2f5;
+  --new: #16865f; --improved: #6a4fd0; --fixed: #1c8a4a; --other: #6e6e73;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e20; --ink: #f5f5f7; --text: #d1d1d6; --muted: #8e8e93;
+    --line: #38383c; --soft: #2a2a2e;
+    --new: #58d8a8; --improved: #b4a2ff; --fixed: #62d28c; --other: #aeaeb2;
+  }
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--new); text-underline-offset: 3px; }
+h1, h2, h3 { margin: 0; }
+.version { color: var(--ink); font-weight: 700; letter-spacing: -0.015em; }
+.meta { margin: 2px 0 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.summary { margin: 12px 0 0; color: var(--ink); }
+section { --tone: var(--other); }
+section.new { --tone: var(--new); }
+section.improved { --tone: var(--improved); }
+section.fixed { --tone: var(--fixed); }
+.tag {
+  display: inline-block;
+  padding: 1px 9px 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  color: var(--tone);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 18px;
+}
+section ul, section ol { margin: 0; padding: 0; list-style: none; }
+section ol { counter-reset: item; }
+section li { position: relative; padding-left: 16px; }
+section ul > li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0.62em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+section ol > li { counter-increment: item; padding-left: 20px; }
+section ol > li::before {
+  content: counter(item) ".";
+  position: absolute;
+  left: 0;
+  color: var(--tone);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+section p { margin: 8px 0 0; }
+code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--soft);
+  font: 0.9em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+body { font-size: 16px; line-height: 1.7; }
+.page { width: min(720px, calc(100% - 44px)); margin-inline: auto; }
+.top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-block: 24px; }
+.brand { color: var(--ink); font-size: 20px; font-weight: 700; letter-spacing: -0.03em; text-decoration: none; }
+.top nav { display: flex; gap: 18px; font-size: 14px; }
+.top nav a, .switch { color: var(--muted); text-decoration: none; }
+.top nav a:hover, .switch:hover { color: var(--ink); }
+.switch { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
+main { padding-block: 40px 72px; }
+.title { color: var(--ink); font-size: clamp(40px, 9vw, 60px); line-height: 1.05; letter-spacing: -0.05em; }
+.intro { margin: 16px 0 48px; color: var(--muted); font-size: 18px; }
+.release { padding-block: 36px 40px; border-top: 1px solid var(--line); scroll-margin-top: 24px; }
+.heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.heading .version { font-size: 28px; line-height: 1.2; letter-spacing: -0.03em; }
+.heading .version a { color: inherit; text-decoration: none; }
+.current {
+  padding: 1px 10px 2px;
+  border-radius: 999px;
+  background: var(--new);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 700;
+}
+.release .meta { font-size: 14px; }
+.release .summary { font-size: 17px; }
+.release section { margin-top: 22px; }
+.release h3 { margin-bottom: 8px; }
+.release .tag { font-size: 12px; line-height: 20px; }
+.release li { margin: 7px 0; padding-left: 18px; }
+footer { padding-block: 22px 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+footer a { color: inherit; }
+:focus-visible { outline: 2px solid var(--new); outline-offset: 3px; }
+html:not([data-lang="en"]) [lang="en"].i18n,
+html[data-lang="en"] [lang="zh-Hans"].i18n { display: none; }
+@media (max-width: 520px) {
+  main { padding-top: 28px; }
+  .intro { margin-bottom: 36px; }
+  .release { padding-block: 28px 32px; }
+  .heading .version { font-size: 24px; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+<header class="top">
+<a class="brand" href="./">Dukou</a>
+<nav>
+<button class="switch" type="button" onclick="switchLanguage()"><span class="i18n" lang="zh-Hans">English</span><span class="i18n" lang="en">中文</span></button>
+<a href="./"><span class="i18n" lang="zh-Hans">返回首页</span><span class="i18n" lang="en">Home</span></a>
+</nav>
+</header>
+<main>
+<h1 class="i18n title" lang="zh-Hans">版本历史</h1><h1 class="i18n title" lang="en">Version History</h1>
+<p class="i18n intro" lang="zh-Hans">Dukou 每个版本的变化。</p><p class="i18n intro" lang="en">What changed in each version of Dukou.</p>
+<article class="release" id="v0.1.13">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.13">Version 0.1.13</a></h2><span class="current">Current Version</span></div>
+<p class="meta">Build 14 · <time datetime="2026-09-21">September 21, 2026</time></p>
+<section class="other"><ul><li>The quick forward pages are laid out afresh: tighter options, and the Start button stays at the bottom of the window.</li><li>New: Resume. Sending the same chat again asks for only the messages after the last export, and each chat can remember its own prompt.</li><li>Saving a quick WeChat forward to a folder can produce Markdown: a note with its attachments, ready for an Obsidian vault.</li></ul></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.13">Version 0.1.13</a></h2><span class="current">当前版本</span></div>
+<p class="meta">Build 14 · <time datetime="2026-09-21">2026年9月21日</time></p>
+<section class="other"><ul><li>快捷转发页重新排版：选项更紧凑，「开始」按钮固定在窗口底部。</li><li>新增续聊：同一个群再次发送时，自动提示只处理上次之后的新消息；每个群可以记住自己的 Prompt。</li><li>快捷微信转发存到文件夹时可选 Markdown，得到笔记加附件的文件夹，可直接放进 Obsidian。</li></ul></section>
+</div>
+</article>
+<article class="release" id="v0.1.12">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.12">Version 0.1.12</a></h2></div>
+<p class="meta">Build 13 · <time datetime="2026-09-16">September 16, 2026</time></p>
+<section class="other"><ul><li>Quick WeChat forward can now leave out photos and videos: turn off Save photos or Save videos and the export keeps the chat text without those files.</li><li>Fixed &quot;This batch could not be selected accurately&quot; when exporting a group with many photos.</li></ul></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.12">Version 0.1.12</a></h2></div>
+<p class="meta">Build 13 · <time datetime="2026-09-16">2026年9月16日</time></p>
+<section class="other"><ul><li>快捷微信转发新增「保存图片」「保存视频」开关，关掉后导出只保留文字记录，不带对应的图片或视频文件。</li><li>修复图片较多的群导出时报「无法准确选中这一批消息」的问题。</li></ul></section>
+</div>
+</article>
+<article class="release" id="v0.1.11">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.11">Version 0.1.11</a></h2></div>
+<p class="meta">Build 12 · <time datetime="2026-09-09">September 9, 2026</time></p>
+<section class="other"><ul><li>Quick WeChat forward can now include an HTML preview. Tick it and the ZIP gains an <code>index.html</code>: unpack the whole ZIP, open it, and read the chat as bubbles — search by sender or text, jump by date, zoom images, play audio and video inline.</li><li>Your own messages are placed on the right automatically, and there is a picker in the top corner when they cannot be detected.</li></ul></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.11">Version 0.1.11</a></h2></div>
+<p class="meta">Build 12 · <time datetime="2026-09-09">2026年9月9日</time></p>
+<section class="other"><ul><li>快捷微信转发新增「HTML 预览」。勾选后，导出的 ZIP 里会多一个 <code>index.html</code>，完整解压后双击就能像聊天界面一样看记录：搜索昵称和正文、按日期跳转、放大图片、直接播放音视频。</li><li>预览会自动把你自己的消息放在右侧；认不出来时，可以在右上角手动选。</li></ul></section>
+</div>
+</article>
+<article class="release" id="v0.1.10">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.10">Version 0.1.10</a></h2></div>
+<p class="meta">Build 11 · <time datetime="2026-09-09">September 9, 2026</time></p>
+<section class="other"><ol><li><strong>A sponsored post no longer ends the whole export.</strong> An ad has no author the way an ordinary post does, so reading one raised the author error — the deliberate refusal to guess, which is right for a post whose author failed to load and wrong for one that never had an author. A single ad anywhere in the requested range meant nothing was exported. Ads are now skipped and the run continues. The ad badge is absent from the accessibility tree, so the evidence is the ad's own popover: both the 赞助商提供的广告信息 notice and the 关闭该广告 button must be present, in those roles, before anything is treated as an ad — a post that merely mentions ads is not dropped from your export. The probe happens before the avatar is touched, since an ad's avatar navigates to the advertiser's site, and the popover is always dismissed with Esc, never by pressing 关闭该广告, which would remove the ad from your own feed.</li></ol></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.10">Version 0.1.10</a></h2></div>
+<p class="meta">Build 11 · <time datetime="2026-09-09">2026年9月9日</time></p>
+<section class="other"><ol><li><strong>朋友圈里的广告不再让整轮导出失败</strong>。广告帖没有正常的作者，Dukou 读到它就会按「读不到作者就停下、不猜」的规则中断——那条规则对加载失败的帖子是对的，对本来就没有作者的广告则不然，结果是范围内只要有一条广告就一条都导不出来。现在遇到广告会跳过它继续往下读。广告标记在辅助功能树里根本不存在，所以判断依据是它自己的弹窗：必须同时有「赞助商提供的广告信息」这段说明和「关闭该广告」这个按钮，才算广告——只是正文里提到广告的帖子不会被误删。探测在点头像之前进行（广告的头像会跳去广告主网站），弹窗一律用 ESC 关掉，绝不会去点「关闭该广告」，那会把广告从你自己的朋友圈里移除。</li></ol></section>
+</div>
+</article>
+<article class="release" id="v0.1.9">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.9">Version 0.1.9</a></h2></div>
+<p class="meta">Build 10 · <time datetime="2026-09-08">September 8, 2026</time></p>
+<section class="other"><ol><li><strong>Quick Moments forward (experimental).</strong> Choose how many recent posts to export, with photos and videos as separate options. Authors, the times WeChat displays and the full text go into a chronological TXT, with the media in a <code>media/</code> folder inside one ZIP, pasted into an app or saved to a folder. A post whose author cannot be read stops the run rather than being guessed at — a wrong attribution is worse than a missing post — and anything that could not be loaded is written into the text instead of quietly dropped. Photos and videos have to be opened and downloaded one at a time, which is slow, so leave the computer alone while it runs; ESC stops it. The clipboard is borrowed during collection and is not restored over anything you copied in the meantime.</li><li><strong>Either quick forward can now land in a folder.</strong> Pasting into an app was the only ending, which ruled out the case where the export itself is the point — an archive you keep, hand to someone, or feed to something that reads a directory. A destination is now an app or a folder, picked the same way; folders open after saving, and a name collision is worked around rather than overwritten.</li><li><strong>No cap on the message count, and batches can be merged.</strong> Batches of 100 export back to back and the pane estimates five seconds per hundred. A run can extract those batches and repack them as a single ZIP, which is offered past 500 messages — the point where handing an app many files starts failing on its own. The original ZIPs stay in history if merging or delivery stops.</li><li><strong>One naming scheme.</strong> Chat and Moments exports are both named by source, the span the content covers and the count. Only a range with both endpoints describes content; anything else is dated by export time, which is all a Moments post with a relative timestamp can honestly claim.</li><li><strong>A shorter README.</strong> The build commands and source tree are gone, and what remains is written for people who do not read Swift.</li></ol></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.9">Version 0.1.9</a></h2></div>
+<p class="meta">Build 10 · <time datetime="2026-09-08">2026年9月8日</time></p>
+<section class="other"><ol><li><strong>新增「快捷朋友圈转发」（实验）</strong>。填要导出的条数，图片和视频可以分别选。Dukou 把作者、微信显示的时间和完整正文按时间线整理成 TXT，媒体放进同一个 ZIP 的 <code>media/</code> 文件夹，粘给应用或存进文件夹。读不到作者时会停下来，不猜——记错人比少一条更糟；没能加载的内容会写进 TXT，而不是悄悄丢掉。图片和视频要逐个打开再下载，速度很慢，这段时间请不要碰电脑，按 ESC 可以中断。采集媒体时会临时借用剪贴板，结束后如果你已经复制了新东西，就不再覆盖。</li><li><strong>两种快捷转发都能直接存进文件夹</strong>。以前只能粘给应用，导出本身是目的时（留档、转给别人、喂给读目录的工具）没法用。现在目标是应用或文件夹，同一个选择器里挑；存完自动打开目录，重名不覆盖而是改名。</li><li><strong>消息条数不再有上限，可以合并成一个 ZIP</strong>。每 100 条一批连续导出，界面按每 100 条约 5 秒预估耗时；可以把多批解压后重新打包成一个 ZIP，向应用转发超过 500 条时会主动建议——那正是一次粘贴很多文件开始出问题的地方。合并或交付中断时原始 ZIP 仍留在记录里。</li><li><strong>文件名统一</strong>。聊天记录和朋友圈都按「来源 + 内容时间范围 + 条数」命名。只有起止都拿得到时才用内容时间；否则按导出时间标注——朋友圈只有「3 小时前」这种相对时间时，能诚实说的只有这个。</li><li><strong>README 精简</strong>。删掉了构建命令、目录结构这些开发内容，剩下的说明也改成不写代码的人能看懂的话。</li></ol></section>
+</div>
+</article>
+<article class="release" id="v0.1.8">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.8">Version 0.1.8</a></h2></div>
+<p class="meta">Build 9 · <time datetime="2026-09-07">September 7, 2026</time></p>
+<section class="other"><ol><li><strong>A right-click that does not take no longer ends the run.</strong> Just after a scroll settles, WeChat sometimes shows the context menu without the click having actually landed on the message; and because Qt's menu items expose no AXPress, the press has to be a synthetic click, which misses while the popup's coordinates are still moving. The whole right-click → 多选 → 合并转发 transition now retries — up to four times, alternating between the two click points on the bubble and re-locating the anchor row from the current geometry each time — and a menu item is only clicked once two consecutive scans agree on where it is.</li></ol></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.8">Version 0.1.8</a></h2></div>
+<p class="meta">Build 9 · <time datetime="2026-09-07">2026年9月7日</time></p>
+<section class="other"><ol><li><strong>右键那一下没生效不再让整轮转发失败</strong>。滚动刚停下时右键，微信有时会把菜单弹出来，但这一下并没有真的选中消息；而 Qt 的菜单项不提供 AXPress，只能合成点击，弹窗坐标还在动的时候点下去就会落空。现在「右键 → 多选 → 合并转发」整段都会重试，最多四次，消息气泡的左右两个落点轮着来，每次重试都按当前的行位置重新定位锚点；菜单项也要连续两次扫描位置一致，才会被点。</li></ol></section>
+</div>
+</article>
+<article class="release" id="v0.1.7">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.7">Version 0.1.7</a></h2></div>
+<p class="meta">Build 8 · <time datetime="2026-09-07">September 7, 2026</time></p>
+<section class="other"><ol><li><strong>A message arriving mid-run no longer stops the forward.</strong> The tracker assumed the list only moves when it is scrolled: an arrival adds or pushes out visible rows and can reverse the direction things moved in, and any of that used to end the run — in an active group that is the normal case, not an edge one. It now re-locates itself by the longest stretch of messages the two snapshots still share, falling back to whichever position is nearest the previous one when repeated rows make that ambiguous.</li></ol></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.7">Version 0.1.7</a></h2></div>
+<p class="meta">Build 8 · <time datetime="2026-09-07">2026年9月7日</time></p>
+<section class="other"><ol><li><strong>转发途中群里来新消息不再中断</strong>。以前的定位逻辑假设聊天列表只在被滚动时才会变：新消息一到，可见的消息行增减、位置反向移动，就会被判成「跟不上了」而停下——活跃的群里这不是偶发，是常态。现在改成按两次快照之间仍然相同的那段消息来重新定位，重复内容分不清时就取离原位置最近的那个。</li></ol></section>
+</div>
+</article>
+<article class="release" id="v0.1.6">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.6">Version 0.1.6</a></h2></div>
+<p class="meta">Build 7 · <time datetime="2026-09-07">September 7, 2026</time></p>
+<section class="other"><ol><li><strong>An unrecognised message kind no longer aborts a forward.</strong> Each exported record used to be compared against the message it was supposed to be, and that comparison had to know the kind first — red packets, Channels cards, merged chat-record cards, labeled stickers, video calls each needed their own rule, every one of them written after a run had already failed on it. Any kind not yet accounted for stopped the forward, for messages WeChat had exported perfectly well. The native ZIP is now delivered as-is.</li><li><strong>The archive is still checked for integrity</strong>: every entry goes through the same CRC check, and an empty or unreadable one is refused with the file kept.</li><li><strong>The count is now shown as &quot;about N&quot;</strong>: it comes from parsing the transcript, so it is an estimate and no longer presented as exact.</li></ol></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.6">Version 0.1.6</a></h2></div>
+<p class="meta">Build 7 · <time datetime="2026-09-07">2026年9月7日</time></p>
+<section class="other"><ol><li><strong>不再因为「没见过的消息类型」中断转发</strong>。以前会把微信导出的每条记录和界面上的消息逐条比对，可这个比对得先认识消息类型——红包、视频号、合并的聊天记录卡片、带名字的表情、视频通话，每一种都要单独写规则，而且都是先失败过一次才补上的。没补到的类型就直接中止，哪怕微信已经正确导出了。现在直接交付微信导出的原始 ZIP。</li><li><strong>仍然校验文件完整</strong>：每个条目照常做 CRC 校验，空的或读不完整的会拒绝并保留文件。</li><li><strong>条数改为显示「约 N 条」</strong>：条数来自解析聊天记录文本，属于估算，界面上不再说得像精确值。</li></ol></section>
+</div>
+</article>
+<article class="release" id="v0.1.5">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.5">Version 0.1.5</a></h2></div>
+<p class="meta">Build 6 · <time datetime="2026-09-07">September 7, 2026</time></p>
+<section class="other"><ol><li><strong>History loads faster</strong>: each page of history used to be confirmed by travelling back to the newest message. The pass now reads how much arrived from where the keyboard focus moved, and returns to the bottom only once at the end.</li><li><strong>Fixed: a run could stall when the last row was a timestamp or a 拍了拍 notice</strong>. Neither is a message, and the list was judged not to have reached the bottom when it already had.</li><li><strong>Fixed: these message kinds stopped a forward</strong> — merged chat-record cards, labeled animated stickers, video calls, red packets and videos. WeChat's exported text describes them differently from the interface, and the mismatch used to abort the run.</li></ol></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.5">Version 0.1.5</a></h2></div>
+<p class="meta">Build 6 · <time datetime="2026-09-07">2026年9月7日</time></p>
+<section class="other"><ol><li><strong>加载历史更快</strong>：以前每翻一页历史都要跑回最新消息确认一次；现在通过焦点位置的变化直接判断加载了多少，全程只在最后回来一次。</li><li><strong>修复：最后一条是时间戳或「拍了拍」时会卡住</strong>。这类提示不是消息，以前会被误判成没能回到最新消息而中止。</li><li><strong>修复：以下消息类型会导致转发中止</strong>——合并转发的聊天记录卡片、带名字的动画表情、视频通话记录、红包、视频。这些消息在微信导出的文本里和界面上写法不同，以前会被当成对不上。</li></ol></section>
+</div>
+</article>
+<article class="release" id="v0.1.4">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.4">Version 0.1.4</a></h2></div>
+<p class="meta">Build 5 · <time datetime="2026-09-07">September 7, 2026</time></p>
+<section class="other"><ol><li><strong>Quick WeChat forward is much faster: about 20 seconds for 500 messages</strong> (the previous release took about 30 seconds for 300). It used to scroll the wheel a screen at a time and stop after each one to work out where it had landed. It now uses the message list's own keyboard navigation — Home crosses the entire loaded history in one step, and an arrow key moves exactly one message. The keys go to WeChat directly rather than through the global event stream.</li><li><strong>Messages taller than the window are handled correctly</strong>: an image or a long text bubble taller than a screen could not be stepped over by the wheel. One arrow key crosses it.</li><li><strong>Channels cards pass verification</strong>: accessibility exposes such a card's author but not its video URL, so these messages used to be read as a mismatch and stop the run.</li></ol></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.4">Version 0.1.4</a></h2></div>
+<p class="meta">Build 5 · <time datetime="2026-09-07">2026年9月7日</time></p>
+<section class="other"><ol><li><strong>快捷微信转发快了一大截：500 条消息全程约 20 秒</strong>（上个版本 300 条约 30 秒）。以前是用滚轮一屏一屏往上翻，每翻一次都得停下来看看落到哪了；现在直接用微信消息列表自带的键盘导航——Home 一下就跨过整段已加载的记录，方向键一次稳稳走一条消息。按键只发给微信，不经过全局输入。</li><li><strong>超高的消息也能正确选中</strong>：比一屏还高的图片或长文本，以前滚轮跨不过去，现在一个方向键就过。</li><li><strong>视频号卡片能通过校验</strong>：这类消息的作者名辅助功能能读到、视频链接读不到，以前会被当成对不上而中止。</li></ol></section>
+</div>
+</article>
+<article class="release" id="v0.1.3">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.3">Version 0.1.3</a></h2></div>
+<p class="meta">Build 4 · <time datetime="2026-09-07">September 7, 2026</time></p>
+<section class="other"><ol><li><strong>Forwarding several hundred WeChat messages no longer gives up halfway</strong>: WeChat reads a conversation off disk as you scroll into it — measured at about 64 rows per second over history it already holds and about 8 over history it does not. Every batch of 100 used to hit that boundary again, and the third or fourth would simply time out. A request past 100 now loads the whole stretch once before selecting anything, and it reads WeChat's own count first: if the history is already in memory, the pass costs nothing.</li><li><strong>A long-standing bug fixed</strong>: returning to the newest message used one enormous scroll gesture, which WeChat clamps to about 50 points. It only ever appeared to work because the list is normally already at the newest message — scroll up first and it could not get back.</li><li><strong>Forward to Other Apps is found on every Mac</strong>: WeChat stacks a promotion above that row for each companion app installed (企业微信, WorkBuddy), so it sits in one of three places. Clicking a fixed position happened to match a machine with exactly one promotion; on macOS 26 with none, the click landed in the recipient list. It is now located by structure — promotions and the tab row have no name, every contact does — and verified on both macOS 15 and macOS 26, with no screen-recording permission involved.</li><li><strong>Escape stops a forward immediately</strong>: the automation owns the pointer while it runs, so Cancel has to be aimed at. Escape does not.</li><li><strong>The message count takes only digits</strong>: the field was free text until it lost focus, so an input method could leave &quot;②00&quot; sitting in it. Non-digits are now refused as typed, and digits in any form (②00, ２００) fold to 200.</li></ol></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.3">Version 0.1.3</a></h2></div>
+<p class="meta">Build 4 · <time datetime="2026-09-07">2026年9月7日</time></p>
+<section class="other"><ol><li><strong>一次几百条的微信转发不再中途失败</strong>：微信的聊天记录是用到才从磁盘读的，越往上翻越慢——实测已加载的部分每秒能过 64 条，没加载的只有 8 条。以前每一批 100 条都要重新撞上这道坎，第三、四批往往直接超时告败。现在超过 100 条会先把整段历史一次性拉到内存里再开始选，而且它会读微信自己的账：已经加载够了就直接跳过，一秒都不多花。</li><li><strong>修好一处一直存在的问题</strong>：回到最新消息用的是一个过大的滚动手势，微信会把它压成每次约 50 点。它一直「有效」只是因为列表通常本来就停在最新消息处——你要是先往上翻过一段再执行，它就回不去了。</li><li><strong>「转发到其他应用」在各种电脑上都能找到</strong>：这一行上方会为装了的企业微信、WorkBuddy 各留一条推广位，所以它的位置有三种可能。以前按固定位置去点，装了一个推广位的机器碰巧对得上，macOS 26 上没有推广位时那一下会点进联系人列表里。现在按结构定位——推广位和标签行没有名字、每个联系人都有名字，那一行就在第一个有名字的行上面。macOS 15 与 macOS 26 均已验证，不需要屏幕录制权限。</li><li><strong>按 Esc 立即中断转发</strong>：执行期间鼠标被自动化占着，「取消」得瞄准了点；Esc 在哪儿都能按。</li><li><strong>条数只能输入数字</strong>：这个框在失焦前是自由文本，输入法给的「②00」能原样停在里面。现在非数字当场被拒，各种写法的数字（②00、２００）都会折成 200。</li></ol></section>
+</div>
+</article>
+<article class="release" id="v0.1.2">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.2">Version 0.1.2</a></h2></div>
+<p class="meta">Build 3 · <time datetime="2026-09-07">September 7, 2026</time></p>
+<section class="other"><ol><li><strong>Quick WeChat forward reaches apps that are not in front</strong>: it used to fail whenever the destination was behind another window or minimised. Dukou now brings the app forward, restoring a minimised window, before it pastes.</li><li><strong>A status capsule while it runs</strong>: it floats in the corner, names the step it is on, asks you to keep your hands off the mouse and keyboard, and cancels on one click. A failure is said there too, with a button back to Settings — by then Settings is usually buried behind WeChat.</li><li><strong>A third less waiting</strong>: the scroll now steps by the height of the visible list instead of crawling, and paces itself to what WeChat can keep up with. 120 messages went from 17.3 s to 11.2 s; 300 take about 30 s.</li><li><strong>The Send to Custom picker opens next to the pointer</strong>: it used to sit in the shelf's corner, which on a multi-display Mac was often the wrong screen. It now appears beside the click that raised it, on that screen.</li><li><strong>A redrawn DMG background</strong>: six Dukou bubble stickers ring the drag lane in the middle, every pointer aimed at the Applications folder.</li></ol></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.2">Version 0.1.2</a></h2></div>
+<p class="meta">Build 3 · <time datetime="2026-09-07">2026年9月7日</time></p>
+<section class="other"><ol><li><strong>快捷微信转发能送到不在最前面的应用</strong>：以前目标 App 只要被挡住或最小化就一定失败。现在 Dukou 会先把它带到前台，最小化的窗口也还原回来，再粘贴。</li><li><strong>执行期间有一枚状态条</strong>：浮在屏幕角落，说明进行到哪一步、提醒完成前别碰鼠标和键盘，随时可以点「取消」。失败也说在这里，并带一个直接跳回设置的按钮——出错时设置窗口通常已经被微信盖住了。</li><li><strong>等待时间少了三分之一</strong>：滚动改成按可见列表的高度一步跨过去，并按微信跟得上的节奏自己调速。120 条消息从 17.3 秒降到 11.2 秒，300 条全程约 30 秒。</li><li><strong>「发送到自定义」的选择卡片改在鼠标旁边弹出</strong>：以前固定在暂存架的角落——多显示器上那往往是另一块屏幕。现在它跟着你点击的位置出现，就在同一块屏幕上。</li><li><strong>DMG 安装背景重画</strong>：六枚渡口气泡贴纸围着中间的拖拽通道，每个指针都朝向 Applications 文件夹。</li></ol></section>
+</div>
+</article>
+<article class="release" id="v0.1.1">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.1">Version 0.1.1</a></h2></div>
+<p class="meta">Build 2 · <time datetime="2026-09-06">September 6, 2026</time></p>
+<section class="other"><ol><li><strong>The guide opens on first launch</strong>: open Dukou after installing and the setup guide is there; a launch from WeChat's forward menu stays silent as before.</li><li><strong>The guide ends in Settings</strong>: the last step has a single Done button that opens Settings → General.</li><li><strong>Sharp DMG background</strong>: a Retina sticker sheet on white replaces the blurry artwork.</li></ol></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.1">Version 0.1.1</a></h2></div>
+<p class="meta">Build 2 · <time datetime="2026-09-06">2026年9月6日</time></p>
+<section class="other"><ol><li><strong>首次启动直接进入设置向导</strong>：装好后打开 Dukou 就会看到向导；由微信转发菜单在后台拉起时仍保持安静。</li><li><strong>向导结束自动打开设置</strong>：最后一步只剩「完成」，点击后直接进入设置 → 通用。</li><li><strong>DMG 安装背景改为 Retina 清晰版</strong>：白底加渡口气泡贴纸，不再模糊。</li></ol></section>
+</div>
+</article>
+<article class="release" id="v0.1.0">
+<div class="i18n" lang="en">
+<div class="heading"><h2 class="version"><a href="#v0.1.0">Version 0.1.0</a></h2></div>
+<p class="meta">Build 1 · <time datetime="2026-09-06">September 6, 2026</time></p>
+<section class="other"><ol><li><strong>Five forward-menu entries</strong>: Stash in Dukou / Send to Codex / Send to Claude / Copy to Clipboard / Send to Custom appear in WeChat's &quot;forward to other apps&quot; menu, each switchable in Settings.</li><li><strong>A share extension with no interface</strong>: nothing appears on screen; the files land before the system reclaims its temporary copy, committed as one atomic batch.</li><li><strong>A Dropover-style shelf</strong>: docked to the corner you chose, consumed when dragged out, gone when empty; files stay in History and age out on schedule.</li><li><strong>Send to any app</strong>: your own list of targets — one goes straight through, several get a picker; terminal-like apps can receive quoted paths instead of files.</li><li><strong>Attached prompt</strong>: a prompt of your own is pasted ahead of the files; keep up to three and switch between them.</li><li><strong>Quick WeChat forward (experimental)</strong>: name a group and a message count; Dukou drives WeChat through Accessibility, verifies the exported ZIP and pastes it into the target app.</li><li><strong>Secure distribution</strong>: the Universal 2 app and DMG are Developer ID-signed, Apple-notarized and stapled, with an EdDSA-signed Sparkle update feed.</li></ol></section>
+</div>
+<div class="i18n" lang="zh-Hans">
+<div class="heading"><h2 class="version"><a href="#v0.1.0">Version 0.1.0</a></h2></div>
+<p class="meta">Build 1 · <time datetime="2026-09-06">2026年9月6日</time></p>
+<section class="other"><ol><li><strong>五条转发入口</strong>：微信「转发到其他应用」里出现 暂存到渡口 / 发给 Codex / 发给 Claude / 复制到剪贴板 / 发送到自定义，在设置里逐条开关。</li><li><strong>无界面的分享扩展</strong>：点完入口不出现任何面板，文件在系统回收临时文件前落盘，整批原子提交。</li><li><strong>Dropover 式暂存架</strong>：常驻所选屏幕角落，拖出去就送达，全拖完自动消失；文件留在「记录」里，到期自动清理。</li><li><strong>发到任何 App</strong>：自定义应用清单，一个直接发、多个弹卡片选；终端类应用可只粘贴带引号的文件路径。</li><li><strong>附加 Prompt</strong>：转发时先粘一条写好的 Prompt 再粘文件，最多保存 3 条随时切换。</li><li><strong>快捷微信转发（实验）</strong>：填群名和条数，通过辅助功能在微信里多选、合并转发，校验导出的 ZIP 后粘贴到目标 App。</li><li><strong>安全分发</strong>：Universal 2 应用与 DMG 均已完成 Developer ID 签名、Apple 公证和票据装订，并提供 Sparkle EdDSA 签名更新源。</li></ol></section>
+</div>
+</article>
 
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --background: #101113;
-          --ink: #f4f4f5;
-          --text: #d7d7db;
-          --muted: #9898a1;
-          --line: #333338;
-          --soft: #232327;
-          --accent: #58d8a8;
-        }
-      }
-
-      * { box-sizing: border-box; }
-
-      body {
-        margin: 0;
-        background: var(--background);
-        color: var(--text);
-        font: 16px/1.7 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
-        -webkit-font-smoothing: antialiased;
-      }
-
-      a {
-        color: inherit;
-        text-decoration-thickness: 1px;
-        text-underline-offset: 4px;
-      }
-
-      a:hover { color: var(--accent); }
-      :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-
-      header,
-      main,
-      footer {
-        width: min(720px, calc(100% - 44px));
-        margin-inline: auto;
-      }
-
-      header {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        padding-block: 24px;
-      }
-
-      .brand {
-        color: var(--ink);
-        font-size: 20px;
-        font-weight: 700;
-        letter-spacing: -0.03em;
-        text-decoration: none;
-      }
-
-      .back { color: var(--muted); font-size: 14px; }
-
-      main { padding-block: 48px 72px; }
-
-      h1,
-      h2,
-      h3 { color: var(--ink); }
-
-      h1 {
-        margin: 0;
-        font-size: clamp(42px, 9vw, 64px);
-        line-height: 1.05;
-        letter-spacing: -0.055em;
-      }
-
-      .intro {
-        margin: 18px 0 56px;
-        color: var(--muted);
-        font-size: 18px;
-      }
-
-      .release {
-        padding-block: 38px 42px;
-        border-top: 1px solid var(--line);
-      }
-
-      .release-heading {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        gap: 10px 14px;
-      }
-
-      .release h2 {
-        margin: 0;
-        font-size: 29px;
-        line-height: 1.2;
-        letter-spacing: -0.035em;
-      }
-
-      .current {
-        padding: 2px 9px;
-        border-radius: 999px;
-        background: var(--accent);
-        color: var(--background);
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      .meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px 16px;
-        margin: 8px 0 22px;
-        color: var(--muted);
-        font-size: 14px;
-      }
-
-      .notes > :first-child { margin-top: 0; }
-      .notes > :last-child { margin-bottom: 0; }
-      .notes p { margin: 0 0 15px; }
-
-      .notes h3 {
-        margin: 26px 0 10px;
-        font-size: 19px;
-        letter-spacing: -0.02em;
-      }
-
-      .notes ul,
-      .notes ol {
-        margin: 0;
-        padding-left: 1.35em;
-      }
-
-      .notes li { margin: 8px 0; padding-left: 0.2em; }
-
-      code {
-        padding: 1px 4px;
-        border: 1px solid var(--line);
-        border-radius: 4px;
-        background: var(--soft);
-        font: 0.86em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-        overflow-wrap: anywhere;
-      }
-
-      .load-error { color: var(--muted); }
-
-      footer {
-        padding-block: 22px 42px;
-        border-top: 1px solid var(--line);
-        color: var(--muted);
-        font-size: 14px;
-      }
-
-      @media (max-width: 520px) {
-        main { padding-top: 34px; }
-        .intro { margin-bottom: 42px; }
-        .release { padding-block: 30px 34px; }
-        .release h2 { font-size: 26px; }
-      }
-    </style>
-  </head>
-  <body>
-    <header>
-      <a class="brand" href="./">Dukou</a>
-      <a class="back" href="./">返回首页</a>
-    </header>
-
-    <main>
-      <h1>版本历史</h1>
-      <p class="intro">Dukou 每个版本的主要变化。</p>
-      <div id="releases">正在载入更新记录…</div>
-      <noscript><p>请前往 <a href="https://github.com/qzz0518/Dukou/releases">GitHub Releases</a> 查看更新记录。</p></noscript>
-    </main>
-
-    <footer>
-      <a href="https://github.com/qzz0518/Dukou/releases">Dukou Releases on GitHub</a>
-    </footer>
-
-    <script>
-      const releases = [
-        { version: '0.1.13', date: '2026-09-21', current: true },
-        { version: '0.1.12', date: '2026-09-16' },
-        { version: '0.1.11', date: '2026-09-09' },
-        { version: '0.1.10', date: '2026-09-09' },
-        { version: '0.1.9', date: '2026-09-08' },
-        { version: '0.1.8', date: '2026-09-07' },
-        { version: '0.1.7', date: '2026-09-07' },
-        { version: '0.1.6', date: '2026-09-07' },
-        { version: '0.1.5', date: '2026-09-07' },
-        { version: '0.1.4', date: '2026-09-07' },
-        { version: '0.1.3', date: '2026-09-07' },
-        { version: '0.1.2', date: '2026-09-07' },
-        { version: '0.1.1', date: '2026-09-06' },
-        { version: '0.1.0', date: '2026-09-06' }
-      ];
-
-      const escapeHTML = (value) => value.replace(/[&<>"']/g, (character) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-      })[character]);
-
-      const inlineMarkdown = (value) => escapeHTML(value)
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>');
-
-      const chineseNotes = (source) => {
-        const clean = source.replace(/<!-- sparkle-sign-warning:[\s\S]*?-->/, '').trim();
-        const match = clean.match(/## 更新日志\s*([\s\S]*?)(?=\n## Changelog|$)/);
-        return match ? match[1].trim() : clean;
-      };
-
-      const renderMarkdown = (source) => {
-        const lines = chineseNotes(source).split(/\r?\n/);
-        let html = '';
-        let list = '';
-
-        const closeList = () => {
-          if (list) html += `</${list}>`;
-          list = '';
-        };
-
-        for (const rawLine of lines) {
-          const line = rawLine.trim();
-          if (!line) { closeList(); continue; }
-
-          const heading = line.match(/^#{1,6}\s+(.+)$/);
-          if (heading) {
-            closeList();
-            html += `<h3>${inlineMarkdown(heading[1])}</h3>`;
-            continue;
-          }
-
-          const ordered = line.match(/^\d+\.\s+(.+)$/);
-          const unordered = line.match(/^[-*]\s+(.+)$/);
-          const item = ordered || unordered;
-          if (item) {
-            const nextList = ordered ? 'ol' : 'ul';
-            if (list !== nextList) { closeList(); list = nextList; html += `<${list}>`; }
-            html += `<li>${inlineMarkdown(item[1])}</li>`;
-            continue;
-          }
-
-          closeList();
-          html += `<p>${inlineMarkdown(line)}</p>`;
-        }
-
-        closeList();
-        return html;
-      };
-
-      const dateLabel = (value) => {
-        const [year, month, day] = value.split('-').map(Number);
-        return `${year}年${month}月${day}日`;
-      };
-
-      Promise.all(releases.map(async (release) => {
-        const file = `Dukou-${release.version}.md`;
-        try {
-          const response = await fetch(file);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const notes = renderMarkdown(await response.text());
-          return `
-            <article class="release">
-              <div class="release-heading">
-                <h2>Version ${release.version}</h2>
-                ${release.current ? '<span class="current">当前版本</span>' : ''}
-              </div>
-              <div class="meta"><time datetime="${release.date}">${dateLabel(release.date)}</time></div>
-              <div class="notes">${notes}</div>
-            </article>`;
-        } catch (_) {
-          return `
-            <article class="release">
-              <div class="release-heading"><h2>Version ${release.version}</h2></div>
-              <div class="meta"><time datetime="${release.date}">${dateLabel(release.date)}</time></div>
-              <p class="load-error">此版本说明暂时无法载入。</p>
-            </article>`;
-        }
-      })).then((articles) => {
-        document.querySelector('#releases').innerHTML = articles.join('');
-      });
-    </script>
-  </body>
+</main>
+<footer><a href="https://github.com/qzz0518/Dukou/releases">GitHub Releases</a></footer>
+</div>
+</body>
 </html>
