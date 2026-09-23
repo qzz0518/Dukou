@@ -191,10 +191,11 @@ private struct AddForwardTargetButton: View {
             }
             .frame(width: 320)
             .onDisappear {
-                if pendingFinder {
-                    pendingFinder = false
-                    chooseFromFinder()
-                }
+                // Still inside the popover's teardown and a CA commit here,
+                // where AppKit suppresses runModal; open the panel a turn later.
+                guard pendingFinder else { return }
+                pendingFinder = false
+                DispatchQueue.main.async { chooseFromFinder() }
             }
         }
         .onChange(of: expanded) { _, value in if !value { focused = true } }
