@@ -45,6 +45,7 @@ final class Preferences: ObservableObject {
         static let hasShownShelfCoachMark = "dev.dukou.hasShownShelfCoachMark"
         static let prompt = "dev.dukou.attachedPrompt"
         static let chatMemory = "dev.dukou.chatMemory"
+        static let showDockIcon = "dev.dukou.showDockIcon"
     }
 
     /// A week: long enough that last Friday's chat export is still there on
@@ -70,6 +71,7 @@ final class Preferences: ObservableObject {
         shelfAnchor = (defaults.data(forKey: Key.shelfAnchor))
             .flatMap { try? JSONDecoder().decode(ShelfAnchor.self, from: $0) }
         hasShownShelfCoachMark = defaults.bool(forKey: Key.hasShownShelfCoachMark)
+        showDockIcon = defaults.object(forKey: Key.showDockIcon) as? Bool ?? true
         // Seeded in the app's language on first read. The default text is a
         // starting point the user is expected to rewrite, not a resource that
         // follows the system language afterwards.
@@ -126,6 +128,12 @@ final class Preferences: ObservableObject {
     /// gesture the user already performs is an interruption.
     @Published var hasShownShelfCoachMark: Bool {
         didSet { defaults.set(hasShownShelfCoachMark, forKey: Key.hasShownShelfCoachMark) }
+    }
+
+    /// A Dock icon on top of the menu bar item, so Dukou can be opened the way
+    /// any other app is. Off returns it to a menu-bar-only app.
+    @Published var showDockIcon: Bool {
+        didSet { defaults.set(showDockIcon, forKey: Key.showDockIcon) }
     }
 
     /// The 附加 Prompt library, its selection, and the switch for each

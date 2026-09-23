@@ -83,6 +83,8 @@
 /* Settings window · General */
 "启动" = "Startup";
 "登录时自动启动" = "Open at login";
+"在程序坞显示图标" = "Show in Dock";
+"关掉后只在菜单栏里。" = "When off, Dukou lives only in the menu bar.";
 "还需要在系统设置里允许。" = "It still needs your approval in System Settings.";
 "打开登录项设置" = "Open Login Items Settings";
 "停靠位置" = "Docked corner";

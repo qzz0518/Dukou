@@ -3,21 +3,32 @@ import Combine
 import DukouCore
 import SwiftUI
 
-/// A menu bar app with one on-demand window.
+/// A menu bar app with one on-demand window, and a Dock icon unless the user
+/// turns it off.
 ///
-/// `LSUIElement` keeps Dukou out of the Dock: it is a resident receiver, and the
-/// share extension launches it in the background where a bouncing Dock icon
-/// would be noise. The one window it does have is real, user-visible
+/// `LSUIElement` still starts every launch without one: a second copy quits
+/// before it could show an icon, and the icon only arrives once
+/// `showDockIcon` says so. The one window Dukou has is real, user-visible
 /// functionality of its own, and AppKit — not SwiftUI — decides when it appears.
 @main
 struct DukouMainApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     /// An empty placeholder: `App` requires a scene, and Dukou's one window is
-    /// opened by `SettingsWindowController` instead. An accessory app never owns
-    /// a menu bar, so this scene is unreachable and draws nothing.
+    /// opened by `SettingsWindowController` instead. With the Dock icon on,
+    /// Dukou owns a menu bar, and the stock 设置… and 关于 items there would
+    /// open this empty scene and a bare About panel; both go to the real window.
     var body: some Scene {
         Settings { EmptyView() }
+            .commands {
+                CommandGroup(replacing: .appInfo) {
+                    Button(L10n.text("关于 Dukou…")) { appDelegate.openMainWindow(.about) }
+                }
+                CommandGroup(replacing: .appSettings) {
+                    Button(L10n.text("设置…")) { appDelegate.openMainWindow(.general) }
+                        .keyboardShortcut(",")
+                }
+            }
     }
 }
 
@@ -85,9 +96,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Redundant when LSUIElement is set, and necessary for `swift run`,
-        // which has no Info.plist at all.
-        NSApp.setActivationPolicy(.accessory)
+        // After the check above, so the copy that lost never showed an icon.
+        // Also the only thing that makes `swift run`, which has no Info.plist,
+        // an accessory app when the icon is off.
+        preferences.$showDockIcon
+            .removeDuplicates()
+            .sink { [weak self] shows in
+                NSApp.setActivationPolicy(shows ? .regular : .accessory)
+                // Leaving `.regular` deactivates the app, and the settings
+                // window the switch was flipped in dropped behind whatever was
+                // under it (measured on macOS 27, 2026-09-23).
+                if !shows, self?.settingsWindow?.isVisible == true { self?.openMainWindow() }
+            }
+            .store(in: &cancellables)
 
         let shelf = ShelfController(model: model, preferences: preferences, targets: forwardTargets)
         let runner = ActionRunner(
@@ -239,8 +260,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// WeChat. Window count went 1 → 2 on a bare `open -g`. The extension's
     /// reopen leaves the app inactive; a double click in Finder or a click on
     /// the Dock icon activates it first, which is the difference this reads.
+    ///
+    /// Not gated on `hasVisibleWindows`: the shelf is a window too, and a Dock
+    /// click while it was up would have done nothing at all.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        if sender.isActive, !hasVisibleWindows { openMainWindow() }
+        if sender.isActive { openMainWindow() }
         return true
     }
 

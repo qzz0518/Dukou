@@ -25,6 +25,16 @@ struct GeneralPane: View {
                     .labelsHidden()
                 }
 
+                SettingRow(
+                    title: L10n.text("在程序坞显示图标"),
+                    detail: L10n.text("关掉后只在菜单栏里。"),
+                    alignment: .center
+                ) {
+                    Toggle(L10n.text("在程序坞显示图标"), isOn: $preferences.showDockIcon)
+                        .toggleStyle(SwitchToggleStyle())
+                        .labelsHidden()
+                }
+
                 if loginItem.needsApproval {
                     Notice(text: L10n.text("还需要在系统设置里允许。"), tone: .warn) {
                         Button(L10n.text("打开登录项设置")) { LoginItem.openLoginItemsSettings() }
