@@ -34,17 +34,17 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
             return
         }
 
-        let controller = NSHostingController(rootView: content())
-        // Left at its default the hosting controller pushes its preferred size
-        // at the window and AppKit adds a title bar on top of it; the guide is
-        // designed at one size and does not get a vote.
-        controller.sizingOptions = []
-        let window = NSWindow(contentViewController: controller)
+        let size = NSSize(width: Metrics.onboardingWidth, height: Metrics.onboardingHeight)
+        let container = NSView.fixedSizeHost(content(), size: size)
+        // No `.resizable`: every step is laid out to fit 920 × 600 exactly.
+        let window = NSWindow(
+            contentRect: container.frame, styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered, defer: true
+        )
+        window.contentView = container
         window.title = ""
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        // No `.resizable`: every step is laid out to fit 920 × 600 exactly.
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         // The permission step sends the user to System Settings, which macOS may
@@ -54,13 +54,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         // `fullSizeContentView` puts the content view over the whole frame, so
         // the frame is the design size — setting the *content* size would add a
         // title bar's height back on.
-        window.setFrame(
-            NSRect(
-                origin: .zero,
-                size: NSSize(width: Metrics.onboardingWidth, height: Metrics.onboardingHeight)
-            ),
-            display: false
-        )
+        window.setFrame(NSRect(origin: .zero, size: size), display: false)
         window.center()
         self.window = window
 
@@ -75,13 +69,13 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     /// has to build a fresh view, so the reference goes here rather than in
     /// `close()`.
     ///
-    /// The content controller is dropped first. `isReleasedWhenClosed` is false,
+    /// The content view is dropped first. `isReleasedWhenClosed` is false,
     /// so once this reference goes nothing releases the window — and the whole
     /// SwiftUI tree hanging off it would stay subscribed to
     /// `didBecomeActiveNotification` and fork five `pluginkit` children on every
     /// activation, once per abandoned run of the guide.
     func windowWillClose(_ notification: Notification) {
-        window?.contentViewController = nil
+        window?.contentView = nil
         window = nil
     }
 }

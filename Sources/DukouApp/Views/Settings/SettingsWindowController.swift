@@ -48,25 +48,18 @@ final class SettingsWindowController {
             return
         }
 
-        let controller = NSHostingController(rootView: content())
-        // Measured: left at its default, the hosting controller pushes its
-        // preferred content size at the window and AppKit adds a title bar's
-        // 28 pt on top of it, so a 560 pt design came out 588 pt tall. The size
-        // here is not negotiable, so the controller does not get a vote.
-        controller.sizingOptions = []
-        // The hosting view keeps a title bar's worth of safe area at the top
-        // even though the bar is transparent, and the fixed 560 pt design was
-        // centred in what was left: everything sat 14 pt low with its last
-        // 14 pt outside the window. Nothing showed it until a bar was pinned
-        // to the bottom edge (2026-09-21).
-        controller.safeAreaRegions = []
-        let window = NSWindow(contentViewController: controller)
+        let size = NSSize(width: Metrics.settingsWidth, height: Metrics.settingsHeight)
+        let container = NSView.fixedSizeHost(content(), size: size)
+        // No `.resizable`: the layout is designed at one size, and §4.1 fixes it
+        // at 780 × 560.
+        let window = NSWindow(
+            contentRect: container.frame, styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered, defer: true
+        )
+        window.contentView = container
         window.title = ""
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        // No `.resizable`: the layout is designed at one size, and §4.1 fixes it
-        // at 780 × 560.
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
         // The window has no title bar to grab, so the background is the handle.
         window.isMovableByWindowBackground = true
         // Closing a menu bar app's only window must not deallocate it.
@@ -74,10 +67,7 @@ final class SettingsWindowController {
         // `fullSizeContentView` puts the content view over the whole frame, so
         // the frame is the design size — setting the *content* size would add
         // the title bar to it again.
-        window.setFrame(
-            NSRect(origin: .zero, size: NSSize(width: Metrics.settingsWidth, height: Metrics.settingsHeight)),
-            display: false
-        )
+        window.setFrame(NSRect(origin: .zero, size: size), display: false)
         window.center()
         self.window = window
 
@@ -89,5 +79,35 @@ final class SettingsWindowController {
 
     func close() {
         window?.close()
+    }
+}
+
+extension NSView {
+    /// A content view for a fixed-size, title-bar-less window, with `rootView`
+    /// drawn from the frame's top edge. The settings window and the guide both
+    /// use it.
+    static func fixedSizeHost(_ rootView: some View, size: NSSize) -> NSView {
+        let hosting = NSHostingView(rootView: rootView)
+        // Measured: left at its default, the hosting view pushes its preferred
+        // content size at the window and AppKit adds a title bar's 28 pt on top
+        // of it, so a 560 pt design came out 588 pt tall. The size here is not
+        // negotiable, so the view does not get a vote.
+        hosting.sizingOptions = []
+        // The hosting view keeps a title bar's worth of safe area at the top
+        // even though the bar is transparent, and a fixed design was centred in
+        // what was left: everything sat 14 pt low with its last 14 pt outside
+        // the window. Nothing showed it until a bar was pinned to the bottom
+        // edge of the settings window (2026-09-21).
+        hosting.safeAreaRegions = []
+        hosting.frame = NSRect(origin: .zero, size: size)
+        hosting.autoresizingMask = [.width, .height]
+        // A hosting view that *is* the content view still sizes the window on
+        // macOS 27, whatever `sizingOptions` says: after the first layout it
+        // added the 32 pt title bar and grew the settings window to 592, leaving
+        // 16 pt strips above and below the design (measured 2026-09-23, 26A428).
+        // One level down it only fills what it is given.
+        let container = NSView(frame: hosting.frame)
+        container.addSubview(hosting)
+        return container
     }
 }
