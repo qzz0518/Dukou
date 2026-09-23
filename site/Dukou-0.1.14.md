@@ -1,0 +1,11 @@
+## 更新日志
+
+- Dukou 现在也显示在程序坞里，点图标即可打开设置；不需要的话可以在「通用」里关掉。
+- 修复 macOS 27 上「手动从访达中选择…」点击后没有反应的问题。
+- 修复 macOS 27 上设置窗口和设置向导上下多出空白的问题。
+
+## Changelog
+
+- Dukou now also sits in the Dock; click its icon to open Settings. Turn it off in General if you prefer the menu bar only.
+- Fixed "Choose in Finder…" doing nothing on macOS 27.
+- Fixed blank strips above and below the Settings window and the setup guide on macOS 27.
