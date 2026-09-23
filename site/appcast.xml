@@ -6,6 +6,18 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Dukou</title>
         <item>
+            <title>0.1.14</title>
+            <pubDate>Wed, 23 Sep 2026 15:43:05 +0900</pubDate>
+            <link>https://github.com/qzz0518/Dukou</link>
+            <sparkle:fullReleaseNotesLink>https://qzz0518.github.io/Dukou/updates.html</sparkle:fullReleaseNotesLink>
+            <sparkle:version>15</sparkle:version>
+            <sparkle:shortVersionString>0.1.14</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:releaseNotesLink sparkle:edSignature="lLP+MaTmuUvPVz0EKQFTDGvhxZBEcmt4zA6fUF3YXKii7lvT+HpqPJx3RjXqIdm1hmRKzJ004AZ2vCjaXh8gCQ==" sparkle:length="3515">https://qzz0518.github.io/Dukou/Dukou-0.1.14.html</sparkle:releaseNotesLink>
+            <sparkle:releaseNotesLink xml:lang="zh" sparkle:edSignature="KxX/p9873n7s0p8BucWLKbMNiUgRBY+1fkWjpSBjBmAR7VMGB7xcUlD7ii8k1BG9qlsb/GalfuzjKD9PmNuoDw==" sparkle:length="3531">https://qzz0518.github.io/Dukou/Dukou-0.1.14.zh.html</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/qzz0518/Dukou/releases/download/v0.1.14/Dukou-0.1.14.dmg" length="10510716" type="application/octet-stream" sparkle:edSignature="q1DEqd7miZLcC4hRoyLNKmY90F6OPs7FcL/k86J5CulwqDD7N6JhvMJADsbTfpiHBqVtEpAp0+NX2Ra5dAI+Bw=="/>
+        </item>
+        <item>
             <title>0.1.13</title>
             <pubDate>Mon, 21 Sep 2026 23:17:12 +0900</pubDate>
             <sparkle:fullReleaseNotesLink>https://qzz0518.github.io/Dukou/updates.html</sparkle:fullReleaseNotesLink>
@@ -150,6 +162,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: TC/1PtfhwaBA/SKqsXUHE04ZjrpKZDBObOimMz+cLDNVn0x4dko+YiEB1YRShcEEbP+NPSFBiBWtg2qqTcqbDQ==
-length: 13395
+edSignature: v2e7KDmXYpsOndDgNK6FYnlL/TvBvb9arrdHcajTI01aUQCFJG9cVI0gLU8rS+XZR5l+4diIwae3Y3TkseXDCA==
+length: 14684
 -->
