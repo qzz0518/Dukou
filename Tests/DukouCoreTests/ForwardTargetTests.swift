@@ -76,6 +76,7 @@ final class ForwardTargetTests: XCTestCase {
         let decoded = ForwardTargetStore.decode(Data(json.utf8))
         XCTAssertEqual(decoded.map(\.bundleIdentifier), ["com.apple.TextEdit"])
         XCTAssertEqual(decoded.map(\.pastesPathOnly), [false])
+        XCTAssertEqual(decoded.map(\.showsInShareMenu), [false])
 
         // And once set, it survives the blob like everything else does.
         let terminal = ForwardTarget(
@@ -87,6 +88,32 @@ final class ForwardTargetTests: XCTestCase {
         let data = try XCTUnwrap(ForwardTargetStore.encode([terminal]))
         XCTAssertEqual(ForwardTargetStore.decode(data), [terminal])
         XCTAssertEqual(ForwardTargetStore.decode(data).first?.pastesPathOnly, true)
+    }
+
+    func testDirectShareTargetIsReadFromGeneratedExtensionInfo() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DukouDirectTarget-\(UUID().uuidString).appex", isDirectory: true)
+        let contents = root.appendingPathComponent("Contents", isDirectory: true)
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let info: [String: Any] = [
+            "CFBundleIdentifier": "dev.dukou.Dukou.ShareTargetsHost.ShareTarget-test",
+            DirectShareInfoKey.bundleIdentifier: "com.apple.TextEdit",
+            DirectShareInfoKey.displayName: "TextEdit",
+            DirectShareInfoKey.pastesPathOnly: true,
+        ]
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: info,
+            format: .xml,
+            options: 0
+        )
+        try data.write(to: contents.appendingPathComponent("Info.plist"))
+
+        let target = try XCTUnwrap(ForwardTarget.directShareTarget(in: XCTUnwrap(Bundle(url: root))))
+        XCTAssertEqual(target.bundleIdentifier, "com.apple.TextEdit")
+        XCTAssertEqual(target.displayName, "TextEdit")
+        XCTAssertTrue(target.pastesPathOnly)
+        XCTAssertTrue(target.showsInShareMenu)
     }
 
     /// What a terminal receives instead of a file: the path, quoted the way a
@@ -157,6 +184,7 @@ final class ForwardTargetTests: XCTestCase {
         // Rebuilt rather than stored whole: this is what `ActionRunner` acts on.
         XCTAssertEqual(intent.target?.bundleIdentifier, target.bundleIdentifier)
         XCTAssertEqual(intent.target?.displayName, target.displayName)
+        XCTAssertEqual(intent.targetPastesPathOnly, target.pastesPathOnly)
     }
 
     /// A target named only in the intent would be gone the moment the forward

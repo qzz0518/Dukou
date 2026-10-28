@@ -20,6 +20,12 @@ public struct ForwardTarget: Codable, Hashable, Sendable, Identifiable {
     /// the forward produces exactly what the drop would have (2026-09-05, the
     /// user's Orca screenshot).
     public let pastesPathOnly: Bool
+    /// When true, Dukou installs a separate pre-signed Share-menu helper.
+    ///
+    /// The Share menu is built from signed extension bundles, so an entry
+    /// cannot be made from a row in `UserDefaults` alone. `DirectShareMenuInstaller`
+    /// uses this flag to keep a generated extension in sync with the row.
+    public let showsInShareMenu: Bool
 
     public var id: String { bundleIdentifier }
 
@@ -27,12 +33,14 @@ public struct ForwardTarget: Codable, Hashable, Sendable, Identifiable {
         bundleIdentifier: String,
         displayName: String,
         addedAt: Date,
-        pastesPathOnly: Bool = false
+        pastesPathOnly: Bool = false,
+        showsInShareMenu: Bool = false
     ) {
         self.bundleIdentifier = bundleIdentifier
         self.displayName = displayName
         self.addedAt = addedAt
         self.pastesPathOnly = pastesPathOnly
+        self.showsInShareMenu = showsInShareMenu
     }
 
     /// A list written before `pastesPathOnly` existed has no such key, and it
@@ -44,7 +52,37 @@ public struct ForwardTarget: Codable, Hashable, Sendable, Identifiable {
         displayName = try container.decode(String.self, forKey: .displayName)
         addedAt = try container.decode(Date.self, forKey: .addedAt)
         pastesPathOnly = try container.decodeIfPresent(Bool.self, forKey: .pastesPathOnly) ?? false
+        showsInShareMenu = try container.decodeIfPresent(Bool.self, forKey: .showsInShareMenu) ?? false
     }
+
+    /// Reads the target encoded in a generated Share extension's Info.plist.
+    ///
+    /// The normal `.custom` extension asks Dukou to choose from the list. A
+    /// generated extension represents one row in that list, so it carries the
+    /// destination with it and arrives as a one-step forward.
+    public static func directShareTarget(in bundle: Bundle = .main) -> ForwardTarget? {
+        guard let bundleIdentifier = bundle.object(forInfoDictionaryKey: DirectShareInfoKey.bundleIdentifier) as? String,
+              let displayName = bundle.object(forInfoDictionaryKey: DirectShareInfoKey.displayName) as? String,
+              !bundleIdentifier.isEmpty,
+              !displayName.isEmpty
+        else { return nil }
+
+        return ForwardTarget(
+            bundleIdentifier: bundleIdentifier,
+            displayName: displayName,
+            addedAt: Date(),
+            pastesPathOnly: bundle.object(forInfoDictionaryKey: DirectShareInfoKey.pastesPathOnly) as? Bool ?? false,
+            showsInShareMenu: true
+        )
+    }
+}
+
+/// Keys written into a generated `.appex` and read by its embedded extension.
+public enum DirectShareInfoKey {
+    public static let bundleIdentifier = "DKForwardBundleIdentifier"
+    public static let displayName = "DKForwardDisplayName"
+    public static let pastesPathOnly = "DKForwardPastesPathOnly"
+    public static let hostBundleIdentifier = "DKHostBundleIdentifier"
 }
 
 /// The list of custom forward targets.

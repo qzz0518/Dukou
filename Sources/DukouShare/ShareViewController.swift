@@ -36,6 +36,10 @@ final class ShareViewController: NSViewController {
     /// Which Share-menu entry the user picked. Every extension bundle runs this
     /// same class and is told apart only by its own Info.plist.
     private let action = ShareAction.declared
+    /// A generated direct-share extension names its destination in its own
+    /// Info.plist. The generic ShareCustom entry leaves this nil and the app
+    /// opens the picker instead.
+    private let directTarget = ForwardTarget.directShareTarget()
     /// `loadView` is not promised to run once, and the import is not idempotent.
     private var hasStarted = false
 
@@ -55,11 +59,15 @@ final class ShareViewController: NSViewController {
         super.viewDidLoad()
         guard !hasStarted, let context = extensionContext else { return }
         hasStarted = true
-        Task { @MainActor in await Self.run(action: action, context: context) }
+        Task { @MainActor in await Self.run(action: action, directTarget: directTarget, context: context) }
     }
 
     @MainActor
-    private static func run(action: ShareAction, context: NSExtensionContext) async {
+    private static func run(
+        action: ShareAction,
+        directTarget: ForwardTarget?,
+        context: NSExtensionContext
+    ) async {
         let sources = flatten(inputItems: context.inputItems)
 
         // Resolved before the emptiness check so that even a share with nothing
@@ -151,7 +159,9 @@ final class ShareViewController: NSViewController {
                 // without drawing a panel, so the app decides — from one target,
                 // from a picker, or from a message saying the list is empty. See
                 // `CustomForwardDecision`.
-                intent: action.needsIntent ? BatchIntent(action: action, requestedAt: Date()) : nil,
+                intent: action.needsIntent
+                    ? BatchIntent(action: action, requestedAt: Date(), target: directTarget)
+                    : nil,
                 in: inbox
             )
         } catch {
@@ -257,7 +267,25 @@ final class ShareViewController: NSViewController {
     /// not running — because the request is submitted before this returns, not
     /// when the callback fires.
     private static func launchContainingApp() {
-        guard let appURL = containingAppURL else { return }
+        // A generated extension lives inside a small helper host app so macOS
+        // can discover it. The action still belongs to the main Dukou app.
+        let info = Bundle.main.infoDictionary ?? [:]
+        let hostIdentifier = info[DirectShareInfoKey.hostBundleIdentifier] as? String
+            ?? hostApplicationIdentifier
+        // A Share extension can also be launched by an older installed copy
+        // while a development build with the same bundle identifier is open.
+        // Use that running copy when it exposes its bundle URL.
+        let runningURL = hostIdentifier.flatMap { identifier in
+            NSWorkspace.shared.runningApplications.first(where: {
+                $0.bundleIdentifier == identifier && $0.bundleURL != nil
+            })?.bundleURL
+        }
+        let appURL = runningURL
+            ?? hostIdentifier.flatMap {
+                NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
+            }
+            ?? containingAppURL
+        guard let appURL else { return }
 
         let configuration = NSWorkspace.OpenConfiguration()
         // The user is still in WeChat. Taking focus here would be the single
@@ -284,6 +312,16 @@ final class ShareViewController: NSViewController {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         return url.pathExtension == "app" ? url : nil
+    }
+
+    /// Fixed extensions in older builds did not include an explicit host key.
+    /// Their own bundle identifier is the containing app's identifier plus the
+    /// slot suffix, so removing that suffix recovers it.
+    private static var hostApplicationIdentifier: String? {
+        guard let own = Bundle.main.bundleIdentifier,
+              let separator = own.lastIndex(of: ".")
+        else { return nil }
+        return String(own[..<separator])
     }
 
     private static var bundleVersion: String? {

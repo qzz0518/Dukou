@@ -127,12 +127,37 @@ final class ForwardTargets: ObservableObject {
     /// A row the user tried to add twice. Adding it again silently would look
     /// like the click did nothing; this makes the existing row answer instead.
     @Published private(set) var highlighted: String?
+    /// The rows whose generated Share extensions are being rebuilt.
+    @Published private(set) var directShareBusy: Set<String> = []
+    /// A helper-app or `pluginkit` failure. Kept beside the list so the switch
+    /// can fail visibly instead of silently doing nothing.
+    @Published private(set) var directShareError: String?
+    /// Apps for which this build contains a signed direct-share template.
+    @Published private(set) var supportedDirectTargetIdentifiers: Set<String> = []
 
     private let store = ForwardTargetStore()
     private var highlightTask: Task<Void, Never>?
+    private var directShareTask: Task<Void, Never>?
 
     init() {
         targets = store.load()
+        supportedDirectTargetIdentifiers = DirectShareMenuInstaller.supportedBundleIdentifiers()
+        let sanitized = targets.map { target in
+            guard target.showsInShareMenu,
+                  !supportedDirectTargetIdentifiers.contains(target.bundleIdentifier)
+            else { return target }
+            return ForwardTarget(
+                bundleIdentifier: target.bundleIdentifier,
+                displayName: target.displayName,
+                addedAt: target.addedAt,
+                pastesPathOnly: target.pastesPathOnly,
+                showsInShareMenu: false
+            )
+        }
+        if sanitized != targets {
+            targets = sanitized
+            store.save(targets)
+        }
     }
 
     var isEmpty: Bool { targets.isEmpty }
@@ -207,7 +232,8 @@ final class ForwardTargets: ObservableObject {
                 bundleIdentifier: bundleIdentifier,
                 displayName: displayName,
                 addedAt: Date(),
-                pastesPathOnly: Self.terminalBundleIdentifiers.contains(bundleIdentifier)
+                pastesPathOnly: Self.terminalBundleIdentifiers.contains(bundleIdentifier),
+                showsInShareMenu: false
             )
         )
         persist()
@@ -225,9 +251,34 @@ final class ForwardTargets: ObservableObject {
             bundleIdentifier: current.bundleIdentifier,
             displayName: current.displayName,
             addedAt: current.addedAt,
-            pastesPathOnly: pastesPathOnly
+            pastesPathOnly: pastesPathOnly,
+            showsInShareMenu: current.showsInShareMenu
         )
         persist()
+        if current.showsInShareMenu { enqueueDirectShareSync() }
+    }
+
+    /// Adds or removes a generated Share-menu entry. The switch is the user's
+    /// intent; the helper app is the implementation detail that makes macOS
+    /// show it in “选择电脑中的应用”.
+    func setShowsInShareMenu(_ shows: Bool, for target: ForwardTarget) {
+        guard supportsDirectShare(target) else {
+            directShareError = L10n.text("这个应用当前没有可用的直达入口。")
+            return
+        }
+        guard let index = targets.firstIndex(where: { $0.bundleIdentifier == target.bundleIdentifier }),
+              targets[index].showsInShareMenu != shows
+        else { return }
+        let current = targets[index]
+        targets[index] = ForwardTarget(
+            bundleIdentifier: current.bundleIdentifier,
+            displayName: current.displayName,
+            addedAt: current.addedAt,
+            pastesPathOnly: current.pastesPathOnly,
+            showsInShareMenu: shows
+        )
+        persist()
+        enqueueDirectShareSync(revertOnFailure: current)
     }
 
     /// The list's current answer for an app, or nil when the app is not on
@@ -249,6 +300,7 @@ final class ForwardTargets: ObservableObject {
     func remove(_ target: ForwardTarget) {
         targets.removeAll { $0.bundleIdentifier == target.bundleIdentifier }
         persist()
+        if target.showsInShareMenu { enqueueDirectShareSync() }
     }
 
     /// The stored order is the order everything shows, so a drag in the settings
@@ -260,6 +312,53 @@ final class ForwardTargets: ObservableObject {
 
     private func persist() {
         store.save(targets)
+    }
+
+    /// Synchronise after the user has edited the list or the app has started.
+    /// The helper is generated in a detached task because code signing and
+    /// `pluginkit` are filesystem/process work, while every UI update stays on
+    /// the main actor.
+    func synchronizeDirectShareEntries() {
+        enqueueDirectShareSync()
+    }
+
+    func supportsDirectShare(_ target: ForwardTarget) -> Bool {
+        supportedDirectTargetIdentifiers.contains(target.bundleIdentifier)
+    }
+
+    private func enqueueDirectShareSync(revertOnFailure: ForwardTarget? = nil) {
+        let previous = directShareTask
+        directShareTask = Task { [weak self] in
+            await previous?.value
+            guard let self else { return }
+            let snapshot = self.targets
+            self.directShareBusy = Set(snapshot.filter(\.showsInShareMenu).map(\.bundleIdentifier))
+            self.directShareError = nil
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try DirectShareMenuInstaller.synchronize(snapshot)
+                }.value
+            } catch {
+                self.directShareError = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+                if let revertOnFailure,
+                   let index = self.targets.firstIndex(where: {
+                       $0.bundleIdentifier == revertOnFailure.bundleIdentifier
+                   }) {
+                    let current = self.targets[index]
+                    self.targets[index] = ForwardTarget(
+                        bundleIdentifier: current.bundleIdentifier,
+                        displayName: current.displayName,
+                        addedAt: current.addedAt,
+                        pastesPathOnly: current.pastesPathOnly,
+                        showsInShareMenu: revertOnFailure.showsInShareMenu
+                    )
+                    self.persist()
+                    self.enqueueDirectShareSync()
+                }
+            }
+            self.directShareBusy = []
+        }
     }
 
     private func highlight(_ bundleIdentifier: String) {

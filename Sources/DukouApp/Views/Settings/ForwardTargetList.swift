@@ -5,10 +5,9 @@ import UniformTypeIdentifiers
 
 /// The apps 「发送到自定义」 offers, and the only place they are edited.
 ///
-/// The Share menu itself cannot grow a row per app — every entry is a signed
-/// `.appex` fixed at build time — so one entry asks instead, and this list is
-/// what it asks from. The order here is the order of the share panel and of both
-/// 发给 ▸ menus, which is why the rows can be dragged.
+/// The Share menu only accepts signed `.appex` bundles fixed at build time, so
+/// supported rows offer a pre-signed direct entry. The order here is the order
+/// of the share panel and of both 发给 ▸ menus, which is why rows can be dragged.
 struct ForwardTargetList: View {
     @ObservedObject var targets: ForwardTargets
 
@@ -21,6 +20,9 @@ struct ForwardTargetList: View {
         VStack(alignment: .leading, spacing: Space.s) {
             well
             AddForwardTargetButton(targets: targets)
+            if let error = targets.directShareError {
+                Notice(error)
+            }
         }
     }
 
@@ -53,6 +55,9 @@ struct ForwardTargetList: View {
                     target: target,
                     isHighlighted: targets.highlighted == target.id,
                     setPathOnly: { targets.setPastesPathOnly($0, for: target) },
+                    setShowsInShareMenu: { targets.setShowsInShareMenu($0, for: target) },
+                    isDirectShareSupported: targets.supportsDirectShare(target),
+                    isUpdatingShareMenu: targets.directShareBusy.contains(target.id),
                     remove: { targets.remove(target) }
                 )
                 .frame(height: Self.rowHeight)
@@ -74,6 +79,9 @@ private struct ForwardTargetRow: View {
     let target: ForwardTarget
     let isHighlighted: Bool
     let setPathOnly: (Bool) -> Void
+    let setShowsInShareMenu: (Bool) -> Void
+    let isDirectShareSupported: Bool
+    let isUpdatingShareMenu: Bool
     let remove: () -> Void
 
     @State private var hovering = false
@@ -110,6 +118,26 @@ private struct ForwardTargetRow: View {
                     .fixedSize()
             }
 
+            if !isDirectShareSupported {
+                StatusPill(text: L10n.text("暂不支持直达"), tone: .neutral)
+                    .fixedSize()
+            }
+
+            Toggle(isOn: Binding(
+                get: { target.showsInShareMenu },
+                set: setShowsInShareMenu
+            )) {
+                Text(L10n.text("直接显示"))
+                    .font(Typo.caption)
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+            .toggleStyle(CheckboxToggleStyle())
+            .fixedSize()
+            .disabled(isUpdatingShareMenu || !isDirectShareSupported)
+            .help(isDirectShareSupported
+                    ? L10n.text("开启后，该应用会直接出现在微信「选择电脑中的应用」；关闭后只在「发送到自定义」里选择。")
+                    : L10n.text("这个应用当前没有可用的直达入口。"))
+
             // Always visible, not only on hover: it is a setting the user has
             // to be able to read off the row, and the one thing that decides
             // whether a terminal gets anything from the forward at all.
@@ -121,6 +149,12 @@ private struct ForwardTargetRow: View {
             .toggleStyle(CheckboxToggleStyle())
             .fixedSize()
             .help(L10n.text("给终端类应用用：粘贴的是带引号的文件路径，跟把文件拖进终端一样。"))
+
+            if isUpdatingShareMenu {
+                ProgressView()
+                    .controlSize(.mini)
+                    .frame(width: 14, height: 14)
+            }
 
             Button(action: remove) {
                 Image(systemName: "minus")

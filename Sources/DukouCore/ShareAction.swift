@@ -135,6 +135,10 @@ public struct BatchIntent: Codable, Sendable, Hashable {
     /// Stored beside the identifier so a failure can name the app even when it
     /// has since been uninstalled and Launch Services can no longer resolve it.
     public let targetDisplayName: String?
+    /// The row's paste mode at the moment the share was committed. A generated
+    /// direct-share extension is not necessarily backed by a row in the app's
+    /// list after an update or uninstall, so the intent carries this too.
+    public let targetPastesPathOnly: Bool?
 
     public init(
         action: ShareAction,
@@ -147,6 +151,7 @@ public struct BatchIntent: Codable, Sendable, Hashable {
         self.requestedAt = requestedAt
         targetBundleIdentifier = target?.bundleIdentifier
         targetDisplayName = target?.displayName
+        targetPastesPathOnly = target?.pastesPathOnly
     }
 
     /// The app to forward to, rebuilt from the two flat fields.
@@ -159,7 +164,9 @@ public struct BatchIntent: Codable, Sendable, Hashable {
         return ForwardTarget(
             bundleIdentifier: targetBundleIdentifier,
             displayName: targetDisplayName ?? targetBundleIdentifier,
-            addedAt: requestedAt
+            addedAt: requestedAt,
+            pastesPathOnly: targetPastesPathOnly ?? false,
+            showsInShareMenu: false
         )
     }
 

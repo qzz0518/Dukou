@@ -31,6 +31,7 @@ DISTRIBUTION="${DISTRIBUTION:-0}"
 ARCHS="${ARCHS:-$(uname -m)}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/Scripts/share-slots.sh"
+source "$ROOT/Scripts/share-targets.sh"
 APP="${APP_PATH:-$ROOT/dist/Dukou.app}"
 BUILD_ROOT="${BUILD_ROOT:-$ROOT/.build/dukou-bundle}"
 APP_INFO="$ROOT/Resources/Info.plist"
@@ -69,6 +70,7 @@ LINK_SDK_FLAGS=(
 
 APP_BINARIES=()
 SHARE_BINARIES=()
+HOST_BINARIES=()
 BIN_DIRS=()
 for ARCH in "${ARCH_LIST[@]}"; do
 	case "$ARCH" in
@@ -78,8 +80,9 @@ for ARCH in "${ARCH_LIST[@]}"; do
 	SCRATCH="$BUILD_ROOT/$ARCH"
 	swift build -c "$CONFIG" --triple "$ARCH-apple-macosx" --scratch-path "$SCRATCH" --product Dukou "${LINK_SDK_FLAGS[@]}"
 	swift build -c "$CONFIG" --triple "$ARCH-apple-macosx" --scratch-path "$SCRATCH" --product DukouShare "${LINK_SDK_FLAGS[@]}"
+	swift build -c "$CONFIG" --triple "$ARCH-apple-macosx" --scratch-path "$SCRATCH" --product DukouShareTargetsHost "${LINK_SDK_FLAGS[@]}"
 	BIN_DIR="$(swift build -c "$CONFIG" --triple "$ARCH-apple-macosx" --scratch-path "$SCRATCH" --show-bin-path)"
-	for PRODUCT in Dukou DukouShare; do
+	for PRODUCT in Dukou DukouShare DukouShareTargetsHost; do
 		if [ ! -x "$BIN_DIR/$PRODUCT" ]; then
 			echo "missing $PRODUCT executable for $ARCH: $BIN_DIR/$PRODUCT" >&2
 			exit 1
@@ -98,6 +101,7 @@ for ARCH in "${ARCH_LIST[@]}"; do
 	done
 	APP_BINARIES+=("$BIN_DIR/Dukou")
 	SHARE_BINARIES+=("$BIN_DIR/DukouShare")
+	HOST_BINARIES+=("$BIN_DIR/DukouShareTargetsHost")
 	BIN_DIRS+=("$BIN_DIR")
 done
 
@@ -137,6 +141,8 @@ if ! otool -l "$APP/Contents/MacOS/Dukou" | grep -Fq '@executable_path/../Framew
 fi
 SHARE_BINARY="$BUILD_ROOT/DukouShare"
 lipo -create "${SHARE_BINARIES[@]}" -output "$SHARE_BINARY"
+HOST_BINARY="$BUILD_ROOT/DukouShareTargetsHost"
+lipo -create "${HOST_BINARIES[@]}" -output "$HOST_BINARY"
 
 cp "$APP_INFO" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
@@ -144,8 +150,72 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :DKAppGroupIdentifier $APP_GROUP" "$APP/Contents/Info.plist"
 
-APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_INFO")"
+APP_ID="${APP_ID:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_INFO")}"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $APP_ID" "$APP/Contents/Info.plist"
 APPEX_PATHS=()
+SHARE_TARGETS_DIR="$APP/Contents/Resources/ShareTargets"
+DIRECT_HELPER_ROOT="$SHARE_TARGETS_DIR/Builtins"
+DIRECT_HELPER_APPS=()
+mkdir -p "$SHARE_TARGETS_DIR" "$DIRECT_HELPER_ROOT"
+
+# Each direct target is a pre-signed helper app. Its containing app supplies the
+# target icon, and its appex carries the target id in Info.plist. Shipping these
+# signed templates avoids asking users for a developer certificate at runtime.
+for TARGET_ROW in "${DIRECT_SHARE_TARGETS[@]}"; do
+	IFS='|' read -r TARGET_KEY TARGET_ID TARGET_DISPLAY TARGET_ICON <<< "$TARGET_ROW"
+	HELPER_APP="$DIRECT_HELPER_ROOT/$TARGET_KEY.app"
+	HELPER_APPEX="$HELPER_APP/Contents/PlugIns/DukouShareTarget.appex"
+	mkdir -p "$HELPER_APP/Contents/MacOS" "$HELPER_APP/Contents/Resources" "$HELPER_APPEX/Contents/MacOS" "$HELPER_APPEX/Contents/Resources"
+	cp "$HOST_BINARY" "$HELPER_APP/Contents/MacOS/DukouShareTargetsHost"
+	cp "$ROOT/Resources/ShareTargetIcons/$TARGET_ICON" "$HELPER_APP/Contents/Resources/AppIcon.icns"
+	printf 'APPL????' > "$HELPER_APP/Contents/PkgInfo"
+	cat > "$HELPER_APP/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleDevelopmentRegion</key><string>zh-Hans</string>
+<key>CFBundleDisplayName</key><string>Dukou · $TARGET_DISPLAY</string>
+<key>CFBundleExecutable</key><string>DukouShareTargetsHost</string>
+<key>CFBundleIconFile</key><string>AppIcon.icns</string>
+<key>CFBundleIdentifier</key><string>$APP_ID.ShareTargetHost.$TARGET_KEY</string>
+<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+<key>CFBundleName</key><string>Dukou</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>$VERSION</string>
+<key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
+<key>DKDirectTargetKey</key><string>$TARGET_KEY</string>
+<key>DKGeneratedShareTargetHost</key><true/>
+<key>DKShareTargetOwner</key><string>$APP_ID</string>
+<key>DKTargetBundleIdentifier</key><string>$TARGET_ID</string>
+<key>DKTargetDisplayName</key><string>$TARGET_DISPLAY</string>
+<key>DKTemplateVersion</key><integer>1</integer>
+<key>LSMinimumSystemVersion</key><string>$MIN_MACOS</string>
+<key>LSUIElement</key><true/>
+<key>NSHighResolutionCapable</key><true/>
+</dict></plist>
+EOF
+	cp "$SHARE_BINARY" "$HELPER_APPEX/Contents/MacOS/DukouShareTarget"
+	cp "$SHARE_INFO" "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c 'Set :CFBundleExecutable DukouShareTarget' "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $APP_ID.ShareTargetHost.$TARGET_KEY.Share" "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Send to $TARGET_DISPLAY" "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c 'Set :DKShareAction custom' "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c "Add :DKHostBundleIdentifier string $APP_ID" "$HELPER_APPEX/Contents/Info.plist" 2>/dev/null \
+		|| /usr/libexec/PlistBuddy -c "Set :DKHostBundleIdentifier $APP_ID" "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c "Add :DKForwardBundleIdentifier string $TARGET_ID" "$HELPER_APPEX/Contents/Info.plist" 2>/dev/null \
+		|| /usr/libexec/PlistBuddy -c "Set :DKForwardBundleIdentifier $TARGET_ID" "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c "Add :DKForwardDisplayName string $TARGET_DISPLAY" "$HELPER_APPEX/Contents/Info.plist" 2>/dev/null \
+		|| /usr/libexec/PlistBuddy -c "Set :DKForwardDisplayName $TARGET_DISPLAY" "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c 'Add :DKForwardPastesPathOnly bool false' "$HELPER_APPEX/Contents/Info.plist" 2>/dev/null \
+		|| /usr/libexec/PlistBuddy -c 'Set :DKForwardPastesPathOnly false' "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c "Add :DKDirectTargetKey string $TARGET_KEY" "$HELPER_APPEX/Contents/Info.plist" 2>/dev/null \
+		|| /usr/libexec/PlistBuddy -c "Set :DKDirectTargetKey $TARGET_KEY" "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$HELPER_APPEX/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c "Set :DKAppGroupIdentifier $APP_GROUP" "$HELPER_APPEX/Contents/Info.plist"
+	DIRECT_HELPER_APPS+=("$HELPER_APP")
+	APPEX_PATHS+=("$HELPER_APPEX")
+done
 
 # One executable, five bundles. The extensions differ only in identity, so
 # copying the same binary keeps them honestly identical and keeps the build to a
@@ -208,6 +278,22 @@ for SLOT_ROW in "${SHARE_SLOTS[@]}"; do
 		ditto "$LPROJ" "$SLOT_APPEX/Contents/Resources/$(basename "$LPROJ")"
 	done
 done
+for TARGET_ROW in "${DIRECT_SHARE_TARGETS[@]}"; do
+	IFS='|' read -r TARGET_KEY _ TARGET_DISPLAY _ <<< "$TARGET_ROW"
+	HELPER_APPEX="$DIRECT_HELPER_ROOT/$TARGET_KEY.app/Contents/PlugIns/DukouShareTarget.appex"
+	for LPROJ in "$ROOT/Resources/Localizations"/*.lproj; do
+		ditto "$LPROJ" "$HELPER_APPEX/Contents/Resources/$(basename "$LPROJ")"
+	done
+	mkdir -p "$HELPER_APPEX/Contents/Resources/zh-Hans.lproj" "$HELPER_APPEX/Contents/Resources/en.lproj"
+	cat > "$HELPER_APPEX/Contents/Resources/zh-Hans.lproj/InfoPlist.strings" <<EOF
+"CFBundleDisplayName" = "发给 $TARGET_DISPLAY";
+"CFBundleName" = "Dukou";
+EOF
+	cat > "$HELPER_APPEX/Contents/Resources/en.lproj/InfoPlist.strings" <<EOF
+"CFBundleDisplayName" = "Send to $TARGET_DISPLAY";
+"CFBundleName" = "Dukou";
+EOF
+done
 shopt -u nullglob
 
 if [ -f "$ROOT/Resources/AppIcon.icns" ]; then
@@ -220,10 +306,19 @@ ditto "$ROOT/Resources/Licenses" "$APP/Contents/Resources/Licenses"
 # Repository fallbacks are useful for `swift run`, but a distributable binary
 # must never reveal the builder's absolute checkout path.
 if [ "$CONFIG" = "release" ]; then
-	RELEASE_BINARIES=("$APP/Contents/MacOS/Dukou")
+	RELEASE_BINARIES=(
+		"$APP/Contents/MacOS/Dukou"
+	)
 	for SLOT_ROW in "${SHARE_SLOTS[@]}"; do
 		IFS='|' read -r _ APPEX_NAME _ _ _ <<< "$SLOT_ROW"
 		RELEASE_BINARIES+=("$APP/Contents/PlugIns/$APPEX_NAME.appex/Contents/MacOS/$APPEX_NAME")
+	done
+	for TARGET_ROW in "${DIRECT_SHARE_TARGETS[@]}"; do
+		IFS='|' read -r TARGET_KEY _ _ _ <<< "$TARGET_ROW"
+		RELEASE_BINARIES+=(
+			"$DIRECT_HELPER_ROOT/$TARGET_KEY.app/Contents/MacOS/DukouShareTargetsHost"
+			"$DIRECT_HELPER_ROOT/$TARGET_KEY.app/Contents/PlugIns/DukouShareTarget.appex/Contents/MacOS/DukouShareTarget"
+		)
 	done
 	for BINARY in "${RELEASE_BINARIES[@]}"; do
 		if strings "$BINARY" | grep -Fq "$ROOT"; then
@@ -252,6 +347,9 @@ codesign "${SIGN_FLAGS[@]}" "$SPARKLE_VERSION/Updater.app"
 codesign "${SIGN_FLAGS[@]}" "$SPARKLE"
 for SLOT_APPEX in "${APPEX_PATHS[@]}"; do
 	codesign "${SIGN_FLAGS[@]}" --entitlements "$BUILT_ENTITLEMENTS/DukouShare.entitlements" "$SLOT_APPEX"
+done
+for HELPER_APP in "${DIRECT_HELPER_APPS[@]}"; do
+	codesign "${SIGN_FLAGS[@]}" "$HELPER_APP"
 done
 codesign "${SIGN_FLAGS[@]}" --entitlements "$BUILT_ENTITLEMENTS/Dukou.entitlements" "$APP"
 
@@ -285,7 +383,8 @@ done
 echo "built $APP"
 echo "version $VERSION ($BUILD_NUMBER)"
 echo "app group $APP_GROUP"
-echo "share entries ${#APPEX_PATHS[@]}"
+echo "share entries ${#SHARE_SLOTS[@]}"
+echo "direct target templates ${#DIRECT_SHARE_TARGETS[@]}"
 echo "architectures $(lipo -archs "$APP/Contents/MacOS/Dukou")"
 if [ "$DISTRIBUTION" = "1" ]; then
 	echo "signed for Developer ID distribution"

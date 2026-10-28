@@ -11,6 +11,7 @@ let package = Package(
     products: [
         .executable(name: "Dukou", targets: ["DukouApp"]),
         .executable(name: "DukouShare", targets: ["DukouShare"]),
+        .executable(name: "DukouShareTargetsHost", targets: ["DukouShareTargetsHost"]),
         .library(name: "DukouCore", targets: ["DukouCore"]),
     ],
     dependencies: [
@@ -55,6 +56,13 @@ let package = Package(
                     "-Xlinker", "-application_extension",
                 ])
             ]
+        ),
+        // The generated Share entries need a small containing app whose bundle
+        // can be rebuilt without touching the signed Dukou installation. This
+        // host stays hidden and exits after Launch Services has indexed it.
+        .executableTarget(
+            name: "DukouShareTargetsHost",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "DukouCoreTests",
