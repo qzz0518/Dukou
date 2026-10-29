@@ -28,7 +28,7 @@ import UniformTypeIdentifiers
 /// rows are unticked first.
 enum DirectShareEntries {
     /// Bumped when the generated bundle changes shape, so every entry is rebuilt.
-    private static let generatorVersion = 1
+    private static let generatorVersion = 2
     private static let appexName = "DukouShareTarget.appex"
     private static let hostExecutable = "DukouShareTargetsHost"
     private static let markerKey = "DKGeneratedShareEntry"
@@ -73,6 +73,13 @@ enum DirectShareEntries {
 
         var failures: [String: String] = [:]
         for target in wanted {
+            // The app was uninstalled: its entry would only lead to a 未安装
+            // toast, so it goes, and the row keeps its switch so the entry
+            // comes back with the app.
+            guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: target.bundleIdentifier) != nil else {
+                if let url = existing[target.bundleIdentifier] { remove(url) }
+                continue
+            }
             let stamp = stamp(for: target, app: app)
             if let url = existing[target.bundleIdentifier], info(at: url)?[stampKey] as? String == stamp {
                 // Current, but Launch Services or pkd may have forgotten it —
@@ -137,7 +144,7 @@ enum DirectShareEntries {
         let appexID = DirectShareEntryName.extensionBundleIdentifier(owner: owner, target: target.bundleIdentifier)
         // Named after the sanitised identifier, never the raw one: a bundle
         // identifier is whatever the app declares, `../` included.
-        let destination = root.appendingPathComponent("\(hostID).app", isDirectory: true)
+        let destination = entryURL(for: target, hostID: hostID, replacing: previous)
         let staging = root.appendingPathComponent(".\(UUID().uuidString).building", isDirectory: true)
         let fileManager = FileManager.default
         try? fileManager.removeItem(at: staging)
@@ -204,6 +211,7 @@ enum DirectShareEntries {
             "CFBundleInfoDictionaryVersion": "6.0",
             // What System Settings → 共享 lists the entry under.
             "CFBundleName": "Dukou · \(target.displayName)",
+            "CFBundleDisplayName": "Dukou · \(target.displayName)",
             "CFBundlePackageType": "APPL",
             "CFBundleShortVersionString": app.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0",
             "CFBundleVersion": app.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0",
@@ -277,6 +285,21 @@ enum DirectShareEntries {
             found[target] = url
         }
         return found
+    }
+
+    /// System Settings → 登录项与扩展 lists an entry under its folder's name,
+    /// so the folder is called what the user would call it: 「Dukou · Claude」.
+    /// Slashes and colons are path syntax, never part of the name; two apps
+    /// that share a name get the identifier to tell them apart.
+    private static func entryURL(for target: ForwardTarget, hostID: String, replacing previous: URL?) -> URL {
+        let name = "Dukou · \(target.displayName)"
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        let preferred = root.appendingPathComponent("\(name).app", isDirectory: true)
+        let takenByAnother = FileManager.default.fileExists(atPath: preferred.path)
+            && preferred.standardizedFileURL != previous?.standardizedFileURL
+            && info(at: preferred)?[targetKey] as? String != target.bundleIdentifier
+        return takenByAnother ? root.appendingPathComponent("\(name) · \(hostID).app", isDirectory: true) : preferred
     }
 
     private static func register(_ entry: URL) {
