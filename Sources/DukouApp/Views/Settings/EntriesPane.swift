@@ -31,12 +31,16 @@ struct EntriesPane: View {
                 PromptSettingsView(preferences: preferences, surface: .forward)
             }
         }
-        .onAppear { probe.refresh() }
+        .onAppear {
+            probe.refresh()
+            targets.adoptSwitchesFromSystem()
+        }
         // The entries can still be changed in System Settings, and the user
         // comes straight back afterwards, so this is re-read on every
         // activation rather than once.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             probe.refresh()
+            targets.adoptSwitchesFromSystem()
         }
     }
 }

@@ -155,15 +155,18 @@ final class ForwardTargets: ObservableObject {
     /// 「发给 Claude」 were entries inside Dukou.app, drawn with Dukou's icon, and
     /// every other app was reached through 「发送到自定义」, which asked which
     /// one. Both are gone: each app is its own entry with its own icon. So
-    /// Codex and Claude are added as rows, and every installed app — those two
-    /// and the ones already listed — is switched on, or the update would take
-    /// away the user's only way to it. A row removed later stays removed.
+    /// Codex and Claude are added as rows when installed, and every installed
+    /// app — those two and the ones already listed — is switched on, or the
+    /// update would take away the user's only way to it. A row removed later
+    /// stays removed.
     private func migrateToAppEntries() {
         let defaults = UserDefaults.standard
         guard !defaults.bool(forKey: Self.migratedKey) else { return }
         defaults.set(true, forKey: Self.migratedKey)
         let seeds: [ForwardTarget] = [ShareAction.codex, .claude].compactMap { action in
-            guard let identifier = action.targetBundleIdentifier, !contains(identifier) else { return nil }
+            guard let identifier = action.targetBundleIdentifier, !contains(identifier),
+                  NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) != nil
+            else { return nil }
             return ForwardTarget(bundleIdentifier: identifier, displayName: action.targetDisplayName, addedAt: Date())
         }
         targets = (seeds + targets).map { target in
@@ -328,6 +331,35 @@ final class ForwardTargets: ObservableObject {
 
     private func persist() {
         store.save(targets)
+    }
+
+    /// System Settings → 登录项与扩展 can switch an entry off behind Dukou's
+    /// back. Read whenever the 入口 pane comes up, and taken as the user
+    /// turning the row off — the entry then goes, as it would from the switch.
+    func adoptSwitchesFromSystem() {
+        let snapshot = targets
+        Self.entryQueue.async {
+            let off = DirectShareEntries.switchedOff(snapshot)
+            guard !off.isEmpty else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                for identifier in off {
+                    guard let index = self.targets.firstIndex(where: { $0.bundleIdentifier == identifier }),
+                          self.targets[index].showsInShareMenu
+                    else { continue }
+                    let current = self.targets[index]
+                    self.targets[index] = ForwardTarget(
+                        bundleIdentifier: current.bundleIdentifier,
+                        displayName: current.displayName,
+                        addedAt: current.addedAt,
+                        pastesPathOnly: current.pastesPathOnly,
+                        showsInShareMenu: false
+                    )
+                }
+                self.persist()
+                self.synchronizeDirectShareEntries()
+            }
+        }
     }
 
     /// Brings the generated entries in line with the list: at launch, and after

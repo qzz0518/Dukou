@@ -59,7 +59,7 @@ One step further, Quick WeChat forward and Quick Moments forward (experimental) 
 ## What it does not do
 
 - No database reads, no decryption, no injection, no changes to WeChat. Chat content comes only from the ZIP WeChat itself exports.
-- No network, except checking for updates. All five extensions are sandboxed without network permission.
+- No network, except checking for updates. Every entry is a sandboxed extension without network permission.
 - No private APIs. Switching apps and pressing ⌘V for you go through public system interfaces, behind a permission you grant.
 
 ## Getting started
@@ -83,7 +83,7 @@ Download the latest `Dukou-*.dmg` from [Releases](https://github.com/qzz0518/Duk
 
 ### First run
 
-1. Open Dukou. A four-step guide walks you through switching on the entries you want. A freshly installed share extension is **registered but disabled** until you switch it on.
+1. Open Dukou. A four-step guide walks you through switching on the entries you want. Codex and Claude (when installed) and every app you add are on by default; Stash in Dukou and Copy to Clipboard are yours to switch on.
 2. Grant Accessibility if you want automated pasting. Skipping is fine; Dukou guides you again the first time a forward fails.
 3. In WeChat, select messages → Merge Forward → Other Apps → pick the entry.
 
@@ -104,7 +104,8 @@ Download the latest `Dukou-*.dmg` from [Releases](https://github.com/qzz0518/Duk
 | Moments text and media | Read only when you start a Moments forward, packed into a ZIP under the same retention as chats |
 | Clipboard | Files, the attached prompt, or the paths a terminal asked for |
 | Network | Software updates only, downloaded only from GitHub Releases |
-| Sandbox | All five extensions run sandboxed |
+| Sandbox | Every entry runs sandboxed |
+| Uninstalling | Switch the apps' entries off in Settings → Entries before deleting Dukou, or delete `~/Library/Application Support/Dukou` afterwards |
 
 ## Contributing
 

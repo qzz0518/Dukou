@@ -256,11 +256,13 @@ final class AppModel: ObservableObject {
     /// A generated 「发给 <app>」 entry cannot write into the app group, so what
     /// it shared is moved in first and from then on is an ordinary batch.
     ///
-    /// Only a forward to an app that has such an entry comes across: the relay
+    /// Only a forward to an app of the user's list comes across: the relay
     /// directory is open to any process the user runs, and without this check
-    /// any of them could have Dukou bring an app forward and press ⌘V.
+    /// any of them could have Dukou bring any app forward and press ⌘V. The
+    /// list, not just the rows switched on: a share made a moment before its
+    /// row was switched off is still the user's.
     private func drainRelay(into inbox: Inbox) {
-        let entries = Set(ForwardTargetStore().load().filter(\.showsInShareMenu).map(\.bundleIdentifier))
+        let entries = Set(ForwardTargetStore().load().map(\.bundleIdentifier))
         let moved = DirectShareEntries.relayInbox.drain(
             into: inbox,
             accepting: { intent in

@@ -82,14 +82,19 @@ enum DirectShareEntries {
             }
             let stamp = stamp(for: target, app: app)
             if let url = existing[target.bundleIdentifier], info(at: url)?[stampKey] as? String == stamp {
-                // Current, but Launch Services or pkd may have forgotten it —
-                // a database rebuild, an OS upgrade. An entry switched off in
-                // System Settings reads as disabled, not unregistered, and is
-                // left alone.
+                // Current, but Launch Services or pkd may have forgotten it — a
+                // database rebuild, an OS upgrade — or registered it after the
+                // build gave up waiting, never elected. Turned off in System
+                // Settings is the user's choice and is left alone.
                 let appexID = DirectShareEntryName.extensionBundleIdentifier(owner: owner, target: target.bundleIdentifier)
-                if ShareEntryProbe.probe(appexID) == .unregistered {
+                switch election(appexID) {
+                case nil:
                     register(url)
                     if waitForRegistration(appexID) { _ = ShareEntryProbe.run(["-e", "use", "-i", appexID]) }
+                case .unelected?:
+                    _ = ShareEntryProbe.run(["-e", "use", "-i", appexID])
+                case .on?, .off?:
+                    break
                 }
                 continue
             }
@@ -176,7 +181,7 @@ enum DirectShareEntries {
 
         // Swapped in only once the new bundle is whole and signed, so a failed
         // rebuild leaves the previous entry working.
-        let previousState = previous.map { _ in ShareEntryProbe.probe(appexID) }
+        let previousElection = previous.map { _ in election(appexID) }
         if let previous { remove(previous) }
         do {
             try fileManager.moveItem(at: staging, to: destination)
@@ -188,10 +193,10 @@ enum DirectShareEntries {
         // pkd files the user's on/off choice under the identifier, which a
         // rebuild keeps. A new entry is blank — registered, never elected, and
         // not in the menu — so it is switched on; a rebuilt one stays off only
-        // if System Settings turned it off. A registration that does not show
-        // up in time is repaired by the next sync's probe.
+        // if System Settings turned it off. One that does not show up in time
+        // is elected by the next sync.
         guard waitForRegistration(appexID) else { throw EntryError.notRegistered(target.displayName) }
-        if previousState != .disabled {
+        if previousElection != .off {
             _ = ShareEntryProbe.run(["-e", "use", "-i", appexID])
         }
     }
@@ -326,6 +331,34 @@ enum DirectShareEntries {
                 try? FileManager.default.removeItem(at: url)
             }
         }
+    }
+
+    /// pkd's flag column for one entry. `ShareEntryProbe.state` folds blank —
+    /// registered, never elected — into off, which is right for a switch but
+    /// not for a sync that has to tell "the user turned it off" from "nobody
+    /// switched it on yet".
+    enum Election { case on, off, unelected }
+
+    static func election(_ identifier: String) -> Election? {
+        guard let result = ShareEntryProbe.run(["-m", "-i", identifier]), result.status == 0 else { return nil }
+        for line in result.text.split(whereSeparator: \.isNewline) where line.contains(identifier) {
+            switch line.first {
+            case "+": return .on
+            case "-", "!": return .off
+            default: return .unelected
+            }
+        }
+        return nil
+    }
+
+    /// Rows whose entry System Settings has switched off, so the 入口 pane can
+    /// show what the menu shows. Blocking, like `synchronize`.
+    static func switchedOff(_ targets: [ForwardTarget], app: Bundle = .main) -> Set<String> {
+        guard let owner = app.bundleIdentifier else { return [] }
+        return Set(targets.filter(\.showsInShareMenu).compactMap { target in
+            let identifier = DirectShareEntryName.extensionBundleIdentifier(owner: owner, target: target.bundleIdentifier)
+            return election(identifier) == .off ? target.bundleIdentifier : nil
+        })
     }
 
     /// pkd indexes a new bundle a moment after Launch Services hears of it.

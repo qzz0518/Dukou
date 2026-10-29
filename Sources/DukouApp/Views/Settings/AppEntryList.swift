@@ -23,13 +23,13 @@ struct AppEntryList: View {
             if editable {
                 if !targets.isEmpty { reorderable }
                 AddForwardTargetButton(targets: targets)
-                if let error = targets.directShareError {
-                    Notice(error)
-                }
             } else {
                 ForEach(targets.targets.prefix(Self.guideRows)) { target in
                     AppEntryRow(target: target, targets: targets, editable: false)
                 }
+            }
+            if let error = targets.directShareError {
+                Notice(error)
             }
         }
     }
@@ -90,6 +90,8 @@ struct AppEntryRow: View {
                 .frame(width: Self.iconSize)
                 .accessibilityHidden(true)
 
+            // One line each: the list's rows have a fixed height, and a long
+            // English name would otherwise wrap into the next row.
             SettingRow(title: title, detail: detail(installed: installed.isInstalled), alignment: .center) {
                 HStack(spacing: Space.m) {
                     // Said out loud rather than left to fail at forward time:
@@ -104,6 +106,8 @@ struct AppEntryRow: View {
                     if editable { removeButton }
                 }
             }
+            .lineLimit(1)
+            .truncationMode(.tail)
         }
         .padding(.horizontal, isHighlighted ? Space.s : 0)
         .background(
@@ -164,6 +168,7 @@ struct AppEntryRow: View {
         .labelsHidden()
         .frame(width: SwitchToggleStyle.width)
         .disabled(!installed && !target.showsInShareMenu)
+        .help(L10n.format("在微信「选择电脑中的应用」里显示「%@」。关掉后仍能从暂存架和记录发给它；「−」才是移除。", title))
     }
 
     private var removeButton: some View {

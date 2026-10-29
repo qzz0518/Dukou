@@ -126,6 +126,7 @@
 "激活 %@ 并粘贴文件。" = "Activates %@ and pastes the files.";
 "激活 %@ 并粘贴文件路径。" = "Activates %@ and pastes the file paths.";
 "添加其他应用" = "Add Another App";
+"在微信「选择电脑中的应用」里显示「%@」。关掉后仍能从暂存架和记录发给它；「−」才是移除。" = "Shows “%@” in WeChat’s Choose an App on Your Mac. Off, the shelf and History can still send to it; “−” removes it.";
 "给终端类应用用：粘贴的是带引号的文件路径，跟把文件拖进终端一样。" = "For terminal-style apps: pastes the quoted file path, exactly as dropping the file on a terminal would.";
 "这次安装缺少生成入口所需的文件，请重新安装 Dukou。" = "This installation is missing the files needed to create entries. Reinstall Dukou.";
 "没有找到 %@，装好后再勾选。" = "Couldn’t find %@. Install it, then tick this again.";
