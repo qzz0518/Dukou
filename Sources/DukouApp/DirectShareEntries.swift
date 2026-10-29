@@ -28,7 +28,7 @@ import UniformTypeIdentifiers
 /// rows are unticked first.
 enum DirectShareEntries {
     /// Bumped when the generated bundle changes shape, so every entry is rebuilt.
-    private static let generatorVersion = 2
+    private static let generatorVersion = 3
     private static let appexName = "DukouShareTarget.appex"
     private static let hostExecutable = "DukouShareTargetsHost"
     private static let markerKey = "DKGeneratedShareEntry"
@@ -175,6 +175,7 @@ enum DirectShareEntries {
             try rewriteExtension(at: appex, target: target, appexID: appexID, owner: owner, app: app)
             try sign(appex, entitlements: true)
             try sign(staging, entitlements: false)
+            releaseFromQuarantine(staging)
         } catch {
             throw EntryError.failed(target.displayName)
         }
@@ -368,6 +369,21 @@ enum DirectShareEntries {
             Thread.sleep(forTimeInterval: 0.15)
         }
         return false
+    }
+
+    /// Dukou itself usually runs from a downloaded bundle, and macOS marks what
+    /// such a process writes — the re-signed executables included — with that
+    /// download's quarantine (measured on the notarized 0.1.18 installed from a
+    /// quarantined DMG: both executables of an entry carried `0181`). Ad-hoc
+    /// code with that mark invites Gatekeeper to judge an entry nobody
+    /// downloaded. It is Dukou's own output, so the mark goes, as Sparkle does
+    /// for an update it has verified.
+    private static func releaseFromQuarantine(_ root: URL) {
+        var paths = [root.path]
+        if let walker = FileManager.default.enumerator(atPath: root.path) {
+            for case let relative as String in walker { paths.append(root.appendingPathComponent(relative).path) }
+        }
+        for path in paths { removexattr(path, "com.apple.quarantine", XATTR_NOFOLLOW) }
     }
 
     private static func copy(_ source: URL, to destination: URL) throws {
