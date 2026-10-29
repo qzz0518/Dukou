@@ -123,7 +123,7 @@
 "Dukou 需要安装在「应用程序」文件夹里，系统才会登记这些入口。" = "macOS only registers these entries once Dukou lives in your Applications folder.";
 "也可以在「系统设置 → 登录项与扩展 → 共享」里管理。" = "You can also manage them in System Settings → Login Items & Extensions → Sharing.";
 "打开系统设置" = "Open System Settings";
-"自定义应用与直达入口" = "Custom Apps and Direct Entries";
+"「发送到自定义」的应用" = "Apps for Send to Custom";
 "还没有添加应用。" = "No apps added yet.";
 "未安装" = "Not installed";
 "移除" = "Remove";
@@ -133,15 +133,12 @@
 "手动从访达中选择…" = "Choose in Finder…";
 "只粘贴文件路径" = "Paste path only";
 "给终端类应用用：粘贴的是带引号的文件路径，跟把文件拖进终端一样。" = "For terminal-style apps: pastes the quoted file path, exactly as dropping the file on a terminal would.";
-"直接显示" = "Show directly";
-"开启后，该应用会直接出现在微信「选择电脑中的应用」；关闭后只在「发送到自定义」里选择。" = "Show this app directly in WeChat's Choose an App on Your Mac. When off, it remains available under Send to Custom.";
-"暂不支持直达" = "No direct entry";
-"这个应用当前没有可用的直达入口。" = "No direct Share entry is available for this app in this build.";
-"这次安装缺少生成共享入口所需的文件。" = "This installation is missing the files needed to create a direct Share entry.";
-"无法创建 Dukou 的共享入口支持目录。" = "Dukou cannot create its Share-entry support folder.";
-"%@ 执行失败（%d）。" = "%@ failed (%d).";
-"%@ 执行失败（%d）：%@" = "%@ failed (%d): %@";
-"系统没有登记共享入口 %@，请稍后重试。" = "macOS did not register the Share entry %@. Try again shortly.";
+"单独入口" = "Direct entry";
+"在微信「选择电脑中的应用」里单独列出这个应用，点一下直接发过去。" = "Lists this app on its own in WeChat’s Choose an App on Your Mac, so one click sends to it.";
+"这次安装缺少生成入口所需的文件，请重新安装 Dukou。" = "This installation is missing the files needed to create entries. Reinstall Dukou.";
+"没有找到 %@，装好后再勾选。" = "Couldn’t find %@. Install it, then tick this again.";
+"没能生成「%@」的入口。" = "Couldn’t create the entry for “%@”.";
+"系统没有登记「%@」的入口，请稍后再勾选一次。" = "macOS didn’t register the entry for “%@”. Tick it again in a moment.";
 
 /* Settings window · Permissions */
 "系统权限" = "System permissions";

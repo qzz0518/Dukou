@@ -5,9 +5,11 @@ import UniformTypeIdentifiers
 
 /// The apps 「发送到自定义」 offers, and the only place they are edited.
 ///
-/// The Share menu only accepts signed `.appex` bundles fixed at build time, so
-/// supported rows offer a pre-signed direct entry. The order here is the order
-/// of the share panel and of both 发给 ▸ menus, which is why rows can be dragged.
+/// The Share menu itself cannot grow a row per app on its own — every entry is
+/// a signed `.appex` — so one entry asks instead, and this list is what it asks
+/// from. A row ticked 单独入口 also gets an entry of its own, generated on this
+/// Mac (`DirectShareEntries`). The order here is the order of the share panel
+/// and of both 发给 ▸ menus, which is why the rows can be dragged.
 struct ForwardTargetList: View {
     @ObservedObject var targets: ForwardTargets
 
@@ -56,8 +58,6 @@ struct ForwardTargetList: View {
                     isHighlighted: targets.highlighted == target.id,
                     setPathOnly: { targets.setPastesPathOnly($0, for: target) },
                     setShowsInShareMenu: { targets.setShowsInShareMenu($0, for: target) },
-                    isDirectShareSupported: targets.supportsDirectShare(target),
-                    isUpdatingShareMenu: targets.directShareBusy.contains(target.id),
                     remove: { targets.remove(target) }
                 )
                 .frame(height: Self.rowHeight)
@@ -80,8 +80,6 @@ private struct ForwardTargetRow: View {
     let isHighlighted: Bool
     let setPathOnly: (Bool) -> Void
     let setShowsInShareMenu: (Bool) -> Void
-    let isDirectShareSupported: Bool
-    let isUpdatingShareMenu: Bool
     let remove: () -> Void
 
     @State private var hovering = false
@@ -118,25 +116,17 @@ private struct ForwardTargetRow: View {
                     .fixedSize()
             }
 
-            if !isDirectShareSupported {
-                StatusPill(text: L10n.text("暂不支持直达"), tone: .neutral)
-                    .fixedSize()
-            }
-
             Toggle(isOn: Binding(
                 get: { target.showsInShareMenu },
                 set: setShowsInShareMenu
             )) {
-                Text(L10n.text("直接显示"))
+                Text(L10n.text("单独入口"))
                     .font(Typo.caption)
                     .foregroundStyle(Theme.inkSecondary)
             }
             .toggleStyle(CheckboxToggleStyle())
             .fixedSize()
-            .disabled(isUpdatingShareMenu || !isDirectShareSupported)
-            .help(isDirectShareSupported
-                    ? L10n.text("开启后，该应用会直接出现在微信「选择电脑中的应用」；关闭后只在「发送到自定义」里选择。")
-                    : L10n.text("这个应用当前没有可用的直达入口。"))
+            .help(L10n.text("在微信「选择电脑中的应用」里单独列出这个应用，点一下直接发过去。"))
 
             // Always visible, not only on hover: it is a setting the user has
             // to be able to read off the row, and the one thing that decides
@@ -149,12 +139,6 @@ private struct ForwardTargetRow: View {
             .toggleStyle(CheckboxToggleStyle())
             .fixedSize()
             .help(L10n.text("给终端类应用用：粘贴的是带引号的文件路径，跟把文件拖进终端一样。"))
-
-            if isUpdatingShareMenu {
-                ProgressView()
-                    .controlSize(.mini)
-                    .frame(width: 14, height: 14)
-            }
 
             Button(action: remove) {
                 Image(systemName: "minus")

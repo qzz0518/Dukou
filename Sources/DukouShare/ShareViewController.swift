@@ -72,7 +72,7 @@ final class ShareViewController: NSViewController {
 
         // Resolved before the emptiness check so that even a share with nothing
         // in it has somewhere to leave its report.
-        let inbox = try? Inbox.resolve()
+        let inbox = try? Inbox.resolve(info: Bundle.main.infoDictionary)
         guard !sources.isEmpty else {
             fail(InboxError.emptyShare, action: action, inbox: inbox, context: context)
             return
@@ -158,7 +158,8 @@ final class ShareViewController: NSViewController {
                 // destination any more: this process cannot ask which app
                 // without drawing a panel, so the app decides — from one target,
                 // from a picker, or from a message saying the list is empty. See
-                // `CustomForwardDecision`.
+                // `CustomForwardDecision`. A generated 「发给 <app>」 entry is the
+                // exception: it names its app (`directTarget`).
                 intent: action.needsIntent
                     ? BatchIntent(action: action, requestedAt: Date(), target: directTarget)
                     : nil,
@@ -267,25 +268,7 @@ final class ShareViewController: NSViewController {
     /// not running — because the request is submitted before this returns, not
     /// when the callback fires.
     private static func launchContainingApp() {
-        // A generated extension lives inside a small helper host app so macOS
-        // can discover it. The action still belongs to the main Dukou app.
-        let info = Bundle.main.infoDictionary ?? [:]
-        let hostIdentifier = info[DirectShareInfoKey.hostBundleIdentifier] as? String
-            ?? hostApplicationIdentifier
-        // A Share extension can also be launched by an older installed copy
-        // while a development build with the same bundle identifier is open.
-        // Use that running copy when it exposes its bundle URL.
-        let runningURL = hostIdentifier.flatMap { identifier in
-            NSWorkspace.shared.runningApplications.first(where: {
-                $0.bundleIdentifier == identifier && $0.bundleURL != nil
-            })?.bundleURL
-        }
-        let appURL = runningURL
-            ?? hostIdentifier.flatMap {
-                NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
-            }
-            ?? containingAppURL
-        guard let appURL else { return }
+        guard let appURL = directShareHostURL ?? containingAppURL else { return }
 
         let configuration = NSWorkspace.OpenConfiguration()
         // The user is still in WeChat. Taking focus here would be the single
@@ -314,14 +297,21 @@ final class ShareViewController: NSViewController {
         return url.pathExtension == "app" ? url : nil
     }
 
-    /// Fixed extensions in older builds did not include an explicit host key.
-    /// Their own bundle identifier is the containing app's identifier plus the
-    /// slot suffix, so removing that suffix recovers it.
-    private static var hostApplicationIdentifier: String? {
-        guard let own = Bundle.main.bundleIdentifier,
-              let separator = own.lastIndex(of: ".")
-        else { return nil }
-        return String(own[..<separator])
+    /// Dukou.app for a generated 「发给 <app>」 entry, whose containing app is a
+    /// placeholder that only lends it an icon. Nil for the five built-in
+    /// entries, which find the app by walking up from themselves.
+    ///
+    /// The path written at generation time first; Dukou regenerates its
+    /// entries when it finds itself somewhere else, so Launch Services is only
+    /// asked in between.
+    private static var directShareHostURL: URL? {
+        let info = Bundle.main.infoDictionary ?? [:]
+        if let path = info[DirectShareInfoKey.hostAppPath] as? String,
+           FileManager.default.fileExists(atPath: path) {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        guard let identifier = info[DirectShareInfoKey.hostBundleIdentifier] as? String else { return nil }
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier)
     }
 
     private static var bundleVersion: String? {

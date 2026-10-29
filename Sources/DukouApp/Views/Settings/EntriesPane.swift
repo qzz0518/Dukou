@@ -27,7 +27,7 @@ struct EntriesPane: View {
                 }
             }
 
-            SettingsSection(title: L10n.text("自定义应用与直达入口"), systemImage: "arrow.up.forward.app") {
+            SettingsSection(title: L10n.text("「发送到自定义」的应用"), systemImage: "arrow.up.forward.app") {
                 ForwardTargetList(targets: targets)
             }
 

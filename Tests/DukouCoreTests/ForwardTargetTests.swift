@@ -100,7 +100,6 @@ final class ForwardTargetTests: XCTestCase {
             "CFBundleIdentifier": "dev.dukou.Dukou.ShareTargetsHost.ShareTarget-test",
             DirectShareInfoKey.bundleIdentifier: "com.apple.TextEdit",
             DirectShareInfoKey.displayName: "TextEdit",
-            DirectShareInfoKey.pastesPathOnly: true,
         ]
         let data = try PropertyListSerialization.data(
             fromPropertyList: info,
@@ -112,8 +111,47 @@ final class ForwardTargetTests: XCTestCase {
         let target = try XCTUnwrap(ForwardTarget.directShareTarget(in: XCTUnwrap(Bundle(url: root))))
         XCTAssertEqual(target.bundleIdentifier, "com.apple.TextEdit")
         XCTAssertEqual(target.displayName, "TextEdit")
-        XCTAssertTrue(target.pastesPathOnly)
         XCTAssertTrue(target.showsInShareMenu)
+    }
+
+    /// A built-in entry's Info.plist names no target, and it must stay the
+    /// question 「发送到自定义」 asks rather than becoming a forward to nowhere.
+    func testABuiltInEntryNamesNoDirectTarget() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DukouBuiltIn-\(UUID().uuidString).appex", isDirectory: true)
+        let contents = root.appendingPathComponent("Contents", isDirectory: true)
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "dev.dukou.Dukou.ShareCustom"],
+            format: .xml,
+            options: 0
+        )
+        try data.write(to: contents.appendingPathComponent("Info.plist"))
+
+        XCTAssertNil(ForwardTarget.directShareTarget(in: try XCTUnwrap(Bundle(url: root))))
+    }
+
+    /// Spelled the way the built-in entries are: a space before a Latin name,
+    /// none before a Chinese one.
+    func testAGeneratedEntryIsNamedLikeTheBuiltInOnes() {
+        XCTAssertEqual(DirectShareEntryName.title(for: "豆包", chinese: true), "发给豆包")
+        XCTAssertEqual(DirectShareEntryName.title(for: "Cursor", chinese: true), "发给 Cursor")
+        XCTAssertEqual(DirectShareEntryName.title(for: "豆包", chinese: false), "Send to 豆包")
+    }
+
+    /// The identifier is where pkd files the user's on/off choice, so it must
+    /// come out the same every time for the same app, and be a legal bundle
+    /// identifier whatever the target's looks like.
+    func testAGeneratedEntryHasAStableLegalIdentifier() {
+        XCTAssertEqual(
+            DirectShareEntryName.hostBundleIdentifier(owner: "dev.dukou.Dukou", target: "com.bot.pc.doubao"),
+            "dev.dukou.Dukou.Target.com.bot.pc.doubao"
+        )
+        XCTAssertEqual(
+            DirectShareEntryName.extensionBundleIdentifier(owner: "dev.dukou.Dukou", target: "com.example.my_app"),
+            "dev.dukou.Dukou.Target.com.example.my-app.Share"
+        )
     }
 
     /// What a terminal receives instead of a file: the path, quoted the way a
@@ -184,7 +222,6 @@ final class ForwardTargetTests: XCTestCase {
         // Rebuilt rather than stored whole: this is what `ActionRunner` acts on.
         XCTAssertEqual(intent.target?.bundleIdentifier, target.bundleIdentifier)
         XCTAssertEqual(intent.target?.displayName, target.displayName)
-        XCTAssertEqual(intent.targetPastesPathOnly, target.pastesPathOnly)
     }
 
     /// A target named only in the intent would be gone the moment the forward

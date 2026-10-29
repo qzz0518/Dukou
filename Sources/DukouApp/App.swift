@@ -179,9 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model: model, shelf: shelf, wechat: wechat, updater: updater,
             openSettings: { [weak self] tab in self?.openMainWindow(tab) }
         )
-        // Restore generated direct-share entries after a relaunch or a system
-        // extension reset. The work runs off the main actor and is a no-op when
-        // the user has not enabled any direct targets.
+        // Rebuilds the generated 「发给 <app>」 entries after an update or a
+        // move, off the main thread; one directory listing when there are none.
         forwardTargets.synchronizeDirectShareEntries()
         model.start()
         model.reload()

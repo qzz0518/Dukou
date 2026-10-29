@@ -112,6 +112,9 @@ final class AppModel: ObservableObject {
     private(set) var inbox: Inbox?
     private var reader: InboxReader?
     private var watcher: InboxWatcher?
+    /// Watches where generated 「发给 <app>」 entries leave their batches; see
+    /// `DirectShareEntries.relayInbox`.
+    private var relayWatcher: InboxWatcher?
     private var intakeDeferralCount = 0
 
     func deferIntake() { intakeDeferralCount += 1 }
@@ -145,6 +148,11 @@ final class AppModel: ObservableObject {
             let watcher = InboxWatcher(inbox: inbox) { [weak self] in self?.reload() }
             self.watcher = watcher
             watcher.start()
+            let relay = DirectShareEntries.relayInbox
+            relay.pruneStaging()
+            let relayWatcher = InboxWatcher(inbox: relay) { [weak self] in self?.reload() }
+            self.relayWatcher = relayWatcher
+            relayWatcher.start()
         } catch {
             inboxFailure = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
@@ -154,6 +162,9 @@ final class AppModel: ObservableObject {
     /// ages out what the retention window says is finished with.
     func reload() {
         guard intakeDeferralCount == 0, let reader else { return }
+        // A generated entry cannot write into the app group, so what it shared
+        // is moved in first and from then on is an ordinary batch.
+        DirectShareEntries.relayInbox.drain(into: reader.inbox)
         publish(reader.loadBatches())
 
         // `isFirstSeen` comes from `state.json` having had to be written, so it

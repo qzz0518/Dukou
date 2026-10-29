@@ -127,37 +127,26 @@ final class ForwardTargets: ObservableObject {
     /// A row the user tried to add twice. Adding it again silently would look
     /// like the click did nothing; this makes the existing row answer instead.
     @Published private(set) var highlighted: String?
-    /// The rows whose generated Share extensions are being rebuilt.
-    @Published private(set) var directShareBusy: Set<String> = []
-    /// A helper-app or `pluginkit` failure. Kept beside the list so the switch
-    /// can fail visibly instead of silently doing nothing.
+    /// Why the last 单独入口 tick did not produce an entry. It stays until the
+    /// user ticks or removes something again: the sync that follows a failure
+    /// succeeds — it has one entry fewer to make — and must not take the
+    /// explanation down with it.
     @Published private(set) var directShareError: String?
-    /// Apps for which this build contains a signed direct-share template.
-    @Published private(set) var supportedDirectTargetIdentifiers: Set<String> = []
 
     private let store = ForwardTargetStore()
     private var highlightTask: Task<Void, Never>?
-    private var directShareTask: Task<Void, Never>?
+    private var isSyncingEntries = false
+    private var needsEntrySync = false
+    /// Rows to untick again if the sync that is about to run cannot make their
+    /// entry — only rows the user just ticked; a failure at launch leaves the
+    /// row as it was and says why.
+    private var revertIfEntryFails: Set<String> = []
+    /// A real thread: `DirectShareEntries` blocks on codesign and pkd, which is
+    /// the reason `ShareEntryProbe` keeps off the cooperative pool too.
+    private static let entryQueue = DispatchQueue(label: "dev.dukou.direct-share-entries", qos: .userInitiated)
 
     init() {
         targets = store.load()
-        supportedDirectTargetIdentifiers = DirectShareMenuInstaller.supportedBundleIdentifiers()
-        let sanitized = targets.map { target in
-            guard target.showsInShareMenu,
-                  !supportedDirectTargetIdentifiers.contains(target.bundleIdentifier)
-            else { return target }
-            return ForwardTarget(
-                bundleIdentifier: target.bundleIdentifier,
-                displayName: target.displayName,
-                addedAt: target.addedAt,
-                pastesPathOnly: target.pastesPathOnly,
-                showsInShareMenu: false
-            )
-        }
-        if sanitized != targets {
-            targets = sanitized
-            store.save(targets)
-        }
     }
 
     var isEmpty: Bool { targets.isEmpty }
@@ -255,17 +244,11 @@ final class ForwardTargets: ObservableObject {
             showsInShareMenu: current.showsInShareMenu
         )
         persist()
-        if current.showsInShareMenu { enqueueDirectShareSync() }
     }
 
-    /// Adds or removes a generated Share-menu entry. The switch is the user's
-    /// intent; the helper app is the implementation detail that makes macOS
-    /// show it in “选择电脑中的应用”.
+    /// 单独入口: the row's own 「发给 <app>」 in the Share menu, so a forward to
+    /// it is one tap in WeChat instead of 「发送到自定义」 and a pick.
     func setShowsInShareMenu(_ shows: Bool, for target: ForwardTarget) {
-        guard supportsDirectShare(target) else {
-            directShareError = L10n.text("这个应用当前没有可用的直达入口。")
-            return
-        }
         guard let index = targets.firstIndex(where: { $0.bundleIdentifier == target.bundleIdentifier }),
               targets[index].showsInShareMenu != shows
         else { return }
@@ -278,7 +261,9 @@ final class ForwardTargets: ObservableObject {
             showsInShareMenu: shows
         )
         persist()
-        enqueueDirectShareSync(revertOnFailure: current)
+        directShareError = nil
+        if shows { revertIfEntryFails.insert(current.bundleIdentifier) }
+        synchronizeDirectShareEntries()
     }
 
     /// The list's current answer for an app, or nil when the app is not on
@@ -300,7 +285,10 @@ final class ForwardTargets: ObservableObject {
     func remove(_ target: ForwardTarget) {
         targets.removeAll { $0.bundleIdentifier == target.bundleIdentifier }
         persist()
-        if target.showsInShareMenu { enqueueDirectShareSync() }
+        if target.showsInShareMenu {
+            directShareError = nil
+            synchronizeDirectShareEntries()
+        }
     }
 
     /// The stored order is the order everything shows, so a drag in the settings
@@ -314,50 +302,44 @@ final class ForwardTargets: ObservableObject {
         store.save(targets)
     }
 
-    /// Synchronise after the user has edited the list or the app has started.
-    /// The helper is generated in a detached task because code signing and
-    /// `pluginkit` are filesystem/process work, while every UI update stays on
-    /// the main actor.
+    /// Brings the generated entries in line with the list: at launch, and after
+    /// every change to a 单独入口. One sync at a time; changes made while one
+    /// runs are picked up by a single follow-up that reads the list afresh.
     func synchronizeDirectShareEntries() {
-        enqueueDirectShareSync()
+        guard !isSyncingEntries else {
+            needsEntrySync = true
+            return
+        }
+        isSyncingEntries = true
+        let snapshot = targets
+        let reverting = revertIfEntryFails
+        revertIfEntryFails = []
+        Self.entryQueue.async {
+            let failures = DirectShareEntries.synchronize(snapshot)
+            Task { @MainActor [weak self] in self?.finishEntrySync(failures, reverting: reverting) }
+        }
     }
 
-    func supportsDirectShare(_ target: ForwardTarget) -> Bool {
-        supportedDirectTargetIdentifiers.contains(target.bundleIdentifier)
-    }
-
-    private func enqueueDirectShareSync(revertOnFailure: ForwardTarget? = nil) {
-        let previous = directShareTask
-        directShareTask = Task { [weak self] in
-            await previous?.value
-            guard let self else { return }
-            let snapshot = self.targets
-            self.directShareBusy = Set(snapshot.filter(\.showsInShareMenu).map(\.bundleIdentifier))
-            self.directShareError = nil
-            do {
-                try await Task.detached(priority: .userInitiated) {
-                    try DirectShareMenuInstaller.synchronize(snapshot)
-                }.value
-            } catch {
-                self.directShareError = (error as? LocalizedError)?.errorDescription
-                    ?? error.localizedDescription
-                if let revertOnFailure,
-                   let index = self.targets.firstIndex(where: {
-                       $0.bundleIdentifier == revertOnFailure.bundleIdentifier
-                   }) {
-                    let current = self.targets[index]
-                    self.targets[index] = ForwardTarget(
-                        bundleIdentifier: current.bundleIdentifier,
-                        displayName: current.displayName,
-                        addedAt: current.addedAt,
-                        pastesPathOnly: current.pastesPathOnly,
-                        showsInShareMenu: revertOnFailure.showsInShareMenu
-                    )
-                    self.persist()
-                    self.enqueueDirectShareSync()
-                }
-            }
-            self.directShareBusy = []
+    private func finishEntrySync(_ failures: [String: String], reverting: Set<String>) {
+        isSyncingEntries = false
+        for identifier in reverting where failures[identifier] != nil {
+            guard let index = targets.firstIndex(where: { $0.bundleIdentifier == identifier }) else { continue }
+            let current = targets[index]
+            targets[index] = ForwardTarget(
+                bundleIdentifier: current.bundleIdentifier,
+                displayName: current.displayName,
+                addedAt: current.addedAt,
+                pastesPathOnly: current.pastesPathOnly,
+                showsInShareMenu: false
+            )
+            persist()
+        }
+        if let message = failures.sorted(by: { $0.key < $1.key }).first?.value {
+            directShareError = message
+        }
+        if needsEntrySync {
+            needsEntrySync = false
+            synchronizeDirectShareEntries()
         }
     }
 

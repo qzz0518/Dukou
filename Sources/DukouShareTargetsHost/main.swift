@@ -1,10 +1,11 @@
 import AppKit
 
-/// A deliberately tiny containing app for generated Share extensions.
+/// The containing app of a generated 「发给 <app>」 entry.
 ///
-/// The executable has no work of its own. Launching it makes macOS index the
-/// `.appex` bundles beside it; the extension starts the real Dukou app through
-/// `DKHostBundleIdentifier`.
+/// It exists for its icon: the Share menu draws an entry with its containing
+/// app's icon, so `DirectShareEntries` wraps each entry in one of these with
+/// the target's icon. It has no work of its own and is never launched on
+/// purpose; opened by hand, it quits.
 final class ShareTargetsHostApplication: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.prohibited)

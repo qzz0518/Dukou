@@ -20,11 +20,12 @@ public struct ForwardTarget: Codable, Hashable, Sendable, Identifiable {
     /// the forward produces exactly what the drop would have (2026-09-05, the
     /// user's Orca screenshot).
     public let pastesPathOnly: Bool
-    /// When true, Dukou installs a separate pre-signed Share-menu helper.
+    /// The app also gets its own entry in the Share menu, 「发给 <app>」, so a
+    /// forward to it skips 「发送到自定义」's question.
     ///
     /// The Share menu is built from signed extension bundles, so an entry
-    /// cannot be made from a row in `UserDefaults` alone. `DirectShareMenuInstaller`
-    /// uses this flag to keep a generated extension in sync with the row.
+    /// cannot be made from a row in `UserDefaults` alone: the app generates one
+    /// per row with this set (`DirectShareEntries`).
     public let showsInShareMenu: Bool
 
     public var id: String { bundleIdentifier }
@@ -67,11 +68,12 @@ public struct ForwardTarget: Codable, Hashable, Sendable, Identifiable {
               !displayName.isEmpty
         else { return nil }
 
+        // The paste mode is not carried: the row this entry was generated from
+        // is still in the list, and `ActionRunner` asks the list.
         return ForwardTarget(
             bundleIdentifier: bundleIdentifier,
             displayName: displayName,
             addedAt: Date(),
-            pastesPathOnly: bundle.object(forInfoDictionaryKey: DirectShareInfoKey.pastesPathOnly) as? Bool ?? false,
             showsInShareMenu: true
         )
     }
@@ -81,8 +83,44 @@ public struct ForwardTarget: Codable, Hashable, Sendable, Identifiable {
 public enum DirectShareInfoKey {
     public static let bundleIdentifier = "DKForwardBundleIdentifier"
     public static let displayName = "DKForwardDisplayName"
-    public static let pastesPathOnly = "DKForwardPastesPathOnly"
+    /// Dukou.app's bundle identifier, for when `hostAppPath` has gone stale.
     public static let hostBundleIdentifier = "DKHostBundleIdentifier"
+    /// Where Dukou.app was when the entry was generated. A generated entry is
+    /// not inside Dukou.app, so it cannot find the app by walking up from its
+    /// own bundle the way the five built-in entries do.
+    public static let hostAppPath = "DKHostAppPath"
+    /// The inbox a generated entry writes to instead of the app group's.
+    public static let inboxPath = "DKInboxPath"
+}
+
+/// The names a generated 「发给 <app>」 entry goes by.
+///
+/// Derived from the target's bundle identifier rather than stored, so the
+/// same row always regenerates under the same identifiers — and pkd keeps the
+/// user's on/off choice, which it files under the extension's identifier.
+public enum DirectShareEntryName {
+    /// The little containing app the entry lives in. A Share-menu row shows
+    /// its containing app's icon, never its own (measured 2026-10-30: an appex
+    /// `CFBundleIconFile` is ignored), so every entry needs one of these.
+    public static func hostBundleIdentifier(owner: String, target: String) -> String {
+        let slug = String(target.unicodeScalars.map { scalar in
+            CharacterSet.alphanumerics.contains(scalar) && scalar.isASCII || scalar == "." || scalar == "-"
+                ? Character(scalar)
+                : "-"
+        })
+        return "\(owner).Target.\(slug)"
+    }
+
+    public static func extensionBundleIdentifier(owner: String, target: String) -> String {
+        hostBundleIdentifier(owner: owner, target: target) + ".Share"
+    }
+
+    /// 「发给豆包」 but 「发给 Codex」, the way the built-in entries are spelled.
+    public static func title(for displayName: String, chinese: Bool) -> String {
+        guard chinese else { return "Send to \(displayName)" }
+        let latin = displayName.unicodeScalars.first.map { $0.isASCII && CharacterSet.alphanumerics.contains($0) } ?? false
+        return latin ? "发给 \(displayName)" : "发给\(displayName)"
+    }
 }
 
 /// The list of custom forward targets.

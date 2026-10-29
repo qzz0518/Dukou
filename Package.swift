@@ -57,9 +57,10 @@ let package = Package(
                 ])
             ]
         ),
-        // The generated Share entries need a small containing app whose bundle
-        // can be rebuilt without touching the signed Dukou installation. This
-        // host stays hidden and exits after Launch Services has indexed it.
+        // The placeholder executable of each generated 「发给 <app>」 entry:
+        // the Share menu draws an entry with its containing app's icon, so
+        // every entry needs an app of its own. Never launched; it exits at once
+        // if someone opens it.
         .executableTarget(
             name: "DukouShareTargetsHost",
             swiftSettings: [.swiftLanguageMode(.v5)]

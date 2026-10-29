@@ -10,13 +10,6 @@ Dukou 使用原版 Sparkle framework 提供签名更新检查与安装。Sparkle
 
 项目主页：<https://github.com/sparkle-project/Sparkle>
 
-## 目标应用图标
-
-`Resources/ShareTargetIcons/Today.icns` 与
-`Resources/ShareTargetIcons/Doubao.icns` 是用于标明转发目标的对应应用图标，
-相关商标与图标权利归各自所有者。它们不由本项目的 MIT 许可授权，也不表示相关
-应用与 Dukou 存在合作或背书关系。
-
 ## 商标
 
 微信是腾讯公司的商标。Dukou 是独立项目，与腾讯无关联、未获其背书；它只接住微信自己通过系统共享服务交出的文件。

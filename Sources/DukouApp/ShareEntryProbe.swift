@@ -33,7 +33,7 @@ final class ShareEntryProbe: ObservableObject {
     /// Long enough for a cold `pkd` to answer — a warm one replies in a few
     /// milliseconds — and short enough that a wedged child cannot leave a row
     /// spinning for the rest of the session.
-    private nonisolated static let timeout: TimeInterval = 3
+    nonisolated static let timeout: TimeInterval = 3
 
     /// Absent means "not read yet", which the pane draws as a spinner. An entry
     /// that has never been probed must not borrow the appearance of one that
@@ -137,14 +137,20 @@ final class ShareEntryProbe: ObservableObject {
         return state(fromOutput: result.text, identifier: identifier)
     }
 
-    private struct ToolResult {
+    struct ToolResult {
         let status: Int32
         let text: String
     }
 
-    private nonisolated static func run(_ arguments: [String]) -> ToolResult? {
+    /// Also how `DirectShareEntries` runs `codesign`, `ditto` and
+    /// `lsregister`: the same timeout discipline, a longer budget.
+    nonisolated static func run(
+        _ arguments: [String],
+        tool: String = "/usr/bin/pluginkit",
+        timeout: TimeInterval = ShareEntryProbe.timeout
+    ) -> ToolResult? {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pluginkit")
+        process.executableURL = URL(fileURLWithPath: tool)
         process.arguments = arguments
         let pipe = Pipe()
         process.standardOutput = pipe
