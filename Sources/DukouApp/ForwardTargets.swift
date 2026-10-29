@@ -139,8 +139,11 @@ final class ForwardTargets: ObservableObject {
     private var needsEntrySync = false
     /// Rows to untick again if the sync that is about to run cannot make their
     /// entry — only rows the user just ticked; a failure at launch leaves the
-    /// row as it was and says why.
-    private var revertIfEntryFails: Set<String> = []
+    /// row as it was and says why. Keyed to the row's tick count, so a sync
+    /// that finishes after the user has flipped the row again cannot undo the
+    /// newer choice.
+    private var revertIfEntryFails: [String: Int] = [:]
+    private var entryTicks: [String: Int] = [:]
     /// A real thread: `DirectShareEntries` blocks on codesign and pkd, which is
     /// the reason `ShareEntryProbe` keeps off the cooperative pool too.
     private static let entryQueue = DispatchQueue(label: "dev.dukou.direct-share-entries", qos: .userInitiated)
@@ -262,7 +265,9 @@ final class ForwardTargets: ObservableObject {
         )
         persist()
         directShareError = nil
-        if shows { revertIfEntryFails.insert(current.bundleIdentifier) }
+        let tick = (entryTicks[current.bundleIdentifier] ?? 0) + 1
+        entryTicks[current.bundleIdentifier] = tick
+        if shows { revertIfEntryFails[current.bundleIdentifier] = tick }
         synchronizeDirectShareEntries()
     }
 
@@ -313,16 +318,22 @@ final class ForwardTargets: ObservableObject {
         isSyncingEntries = true
         let snapshot = targets
         let reverting = revertIfEntryFails
-        revertIfEntryFails = []
+        revertIfEntryFails = [:]
         Self.entryQueue.async {
             let failures = DirectShareEntries.synchronize(snapshot)
             Task { @MainActor [weak self] in self?.finishEntrySync(failures, reverting: reverting) }
         }
     }
 
-    private func finishEntrySync(_ failures: [String: String], reverting: Set<String>) {
+    private func finishEntrySync(_ failures: [String: String], reverting: [String: Int]) {
         isSyncingEntries = false
-        for identifier in reverting where failures[identifier] != nil {
+        // Only what is still true: a row ticked again or turned off while this
+        // sync ran is the newer sync's to answer for.
+        let stillTrue = failures.filter { identifier, _ in
+            targets.contains { $0.bundleIdentifier == identifier && $0.showsInShareMenu }
+                && (reverting[identifier].map { $0 == entryTicks[identifier] } ?? true)
+        }
+        for identifier in reverting.keys where stillTrue[identifier] != nil {
             guard let index = targets.firstIndex(where: { $0.bundleIdentifier == identifier }) else { continue }
             let current = targets[index]
             targets[index] = ForwardTarget(
@@ -334,7 +345,7 @@ final class ForwardTargets: ObservableObject {
             )
             persist()
         }
-        if let message = failures.sorted(by: { $0.key < $1.key }).first?.value {
+        if let message = stillTrue.sorted(by: { $0.key < $1.key }).first?.value {
             directShareError = message
         }
         if needsEntrySync {

@@ -56,19 +56,37 @@ public struct Inbox: Sendable, Hashable {
         return try resolve(fileManager: fileManager)
     }
 
-    /// Moves every published batch, failure report and diagnostics record from
-    /// this inbox into `destination`, where the rest of the app looks.
+    /// Moves what generated entries published here into `destination`, where
+    /// the rest of the app looks, and returns each batch's old and new
+    /// directory.
     ///
-    /// Batches go through `destination.staging` first: the two trees are both
-    /// under the home folder, so each move is normally one `rename(2)`, but if
-    /// they ever sit on different volumes `moveItem` becomes copy-then-delete,
-    /// and the app must never see a half-copied batch in `Ready`. The intent
-    /// travels inside the batch directory, so the forward goes with it.
+    /// Unlike the app group's container, this directory has no protection of
+    /// its own: any process the user runs can write into it. So a batch only
+    /// comes across when its intent is one `accepts` vouches for — the caller
+    /// passes "a forward to an app the user gave its own entry" — and every
+    /// file it lists stays inside it. Anything else is deleted unread, and the
+    /// failure reports and diagnostics only come across when `acceptsReports`
+    /// says there is an entry that could have written them.
+    ///
+    /// Batches go through `destination.staging` first: both trees are under
+    /// the home folder, so each move is normally one `rename(2)`, but on two
+    /// volumes `moveItem` is copy-then-delete, and the app must never see a
+    /// half-copied batch in `Ready`. The intent travels inside the batch
+    /// directory, so the forward goes with it.
     @discardableResult
-    public func drain(into destination: Inbox, fileManager: FileManager = .default) -> Int {
+    public func drain(
+        into destination: Inbox,
+        accepting accepts: (BatchIntent) -> Bool,
+        acceptsReports: Bool,
+        fileManager: FileManager = .default
+    ) -> [URL: URL] {
         try? destination.prepareDirectories(fileManager: fileManager)
-        var moved = 0
+        var moved: [URL: URL] = [:]
         for batch in Self.children(of: ready, fileManager: fileManager) {
+            guard Self.isAcceptable(batch, accepts: accepts) else {
+                try? fileManager.removeItem(at: batch)
+                continue
+            }
             let name = batch.lastPathComponent
             let transit = destination.staging.appendingPathComponent(name + ".relay", isDirectory: true)
             let target = destination.ready.appendingPathComponent(name, isDirectory: true)
@@ -77,7 +95,7 @@ public struct Inbox: Sendable, Hashable {
             do {
                 try fileManager.moveItem(at: batch, to: transit)
                 try fileManager.moveItem(at: transit, to: target)
-                moved += 1
+                moved[batch] = target
             } catch {
                 continue
             }
@@ -85,11 +103,30 @@ public struct Inbox: Sendable, Hashable {
         for (from, to) in [(failures, destination.failures), (diagnostics, destination.diagnostics)] {
             for file in Self.children(of: from, fileManager: fileManager) {
                 let target = to.appendingPathComponent(file.lastPathComponent)
-                guard !fileManager.fileExists(atPath: target.path) else { continue }
-                if (try? fileManager.moveItem(at: file, to: target)) != nil { moved += 1 }
+                if !acceptsReports || fileManager.fileExists(atPath: target.path) {
+                    try? fileManager.removeItem(at: file)
+                } else {
+                    try? fileManager.moveItem(at: file, to: target)
+                }
             }
         }
+        // The extension that wrote these pruned its own inbox, not this one.
+        if acceptsReports { DiagnosticsLog.prune(in: destination, fileManager: fileManager) }
         return moved
+    }
+
+    private static func isAcceptable(_ batch: URL, accepts: (BatchIntent) -> Bool) -> Bool {
+        let values = try? batch.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+        guard values?.isDirectory == true, values?.isSymbolicLink != true,
+              let intentData = try? Data(contentsOf: batch.appendingPathComponent(BatchIntent.fileName)),
+              let intent = try? BatchManifest.decoder().decode(BatchIntent.self, from: intentData),
+              accepts(intent),
+              let manifestData = try? Data(contentsOf: batch.appendingPathComponent(BatchStaging.manifestFileName)),
+              let manifest = try? BatchManifest.decoder().decode(BatchManifest.self, from: manifestData)
+        else { return false }
+        return manifest.items.allSatisfy { item in
+            !item.relativePath.hasPrefix("/") && !item.relativePath.split(separator: "/").contains("..")
+        }
     }
 
     private static func children(of directory: URL, fileManager: FileManager) -> [URL] {

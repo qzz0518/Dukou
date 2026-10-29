@@ -150,7 +150,9 @@ final class AppModel: ObservableObject {
             watcher.start()
             let relay = DirectShareEntries.relayInbox
             relay.pruneStaging()
-            let relayWatcher = InboxWatcher(inbox: relay) { [weak self] in self?.reload() }
+            // The directory only: the share signal, activation and wake already
+            // reach `watcher`, and `reload` drains before it reads.
+            let relayWatcher = InboxWatcher(inbox: relay, observesSignals: false) { [weak self] in self?.reload() }
             self.relayWatcher = relayWatcher
             relayWatcher.start()
         } catch {
@@ -162,9 +164,7 @@ final class AppModel: ObservableObject {
     /// ages out what the retention window says is finished with.
     func reload() {
         guard intakeDeferralCount == 0, let reader else { return }
-        // A generated entry cannot write into the app group, so what it shared
-        // is moved in first and from then on is an ordinary batch.
-        DirectShareEntries.relayInbox.drain(into: reader.inbox)
+        drainRelay(into: reader.inbox)
         publish(reader.loadBatches())
 
         // `isFirstSeen` comes from `state.json` having had to be written, so it
@@ -251,6 +251,48 @@ final class AppModel: ObservableObject {
             _ = self.announce(current, reader: reader)
             self.publish(reader.loadBatches())
         }
+    }
+
+    /// A generated 「发给 <app>」 entry cannot write into the app group, so what
+    /// it shared is moved in first and from then on is an ordinary batch.
+    ///
+    /// Only a forward to an app that has such an entry comes across: the relay
+    /// directory is open to any process the user runs, and without this check
+    /// any of them could have Dukou bring an app forward and press ⌘V.
+    private func drainRelay(into inbox: Inbox) {
+        let entries = Set(ForwardTargetStore().load().filter(\.showsInShareMenu).map(\.bundleIdentifier))
+        let moved = DirectShareEntries.relayInbox.drain(
+            into: inbox,
+            accepting: { intent in
+                intent.action == .custom && intent.targetBundleIdentifier.map(entries.contains) == true
+            },
+            acceptsReports: !entries.isEmpty
+        )
+        followMovedFiles(moved)
+    }
+
+    /// The extension put the batch's files on the clipboard where it wrote
+    /// them, and the move just made those paths dead. A forward writes the
+    /// clipboard again before it pastes, but an expired one does not — and the
+    /// user was promised a ⌘V. Only content that is exactly those files is
+    /// replaced: anything copied since is the user's.
+    private func followMovedFiles(_ moved: [URL: URL]) {
+        guard !moved.isEmpty,
+              let held = NSPasteboard.general.readObjects(
+                  forClasses: [NSURL.self],
+                  options: [.urlReadingFileURLsOnly: true]
+              ) as? [URL],
+              !held.isEmpty
+        else { return }
+        var followed: [URL] = []
+        for url in held {
+            let path = url.standardizedFileURL.path
+            guard let (from, to) = moved.first(where: { path.hasPrefix($0.key.standardizedFileURL.path + "/") }) else {
+                return
+            }
+            followed.append(URL(fileURLWithPath: to.path + path.dropFirst(from.standardizedFileURL.path.count)))
+        }
+        FilePasteboard.write(followed)
     }
 
     /// The chat the batch these files belong to came out of, if they are one

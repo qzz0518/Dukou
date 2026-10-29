@@ -57,10 +57,15 @@ enum DirectShareEntries {
     /// An entry that is already current costs a plist read and nothing else —
     /// no pkd call, so a choice made in System Settings is never overridden.
     static func synchronize(_ targets: [ForwardTarget], app: Bundle = .main) -> [String: String] {
-        // `swift run` has no bundle and nothing to copy; neither touches disk.
-        guard let owner = app.bundleIdentifier, app.bundleURL.pathExtension == "app" else { return [:] }
+        // `swift run` has no bundle and nothing to copy, and a translocated
+        // copy — opened from the disk image or Downloads — lives at a path that
+        // is gone once it quits: neither touches what is on disk.
+        guard let owner = app.bundleIdentifier, app.bundleURL.pathExtension == "app",
+              !app.bundleURL.path.contains("/AppTranslocation/")
+        else { return [:] }
         let wanted = targets.filter(\.showsInShareMenu)
         let existing = installedEntries(owner: owner)
+        removeAbandonedBuilds()
 
         for (target, url) in existing where !wanted.contains(where: { $0.bundleIdentifier == target }) {
             remove(url)
@@ -70,6 +75,15 @@ enum DirectShareEntries {
         for target in wanted {
             let stamp = stamp(for: target, app: app)
             if let url = existing[target.bundleIdentifier], info(at: url)?[stampKey] as? String == stamp {
+                // Current, but Launch Services or pkd may have forgotten it —
+                // a database rebuild, an OS upgrade. An entry switched off in
+                // System Settings reads as disabled, not unregistered, and is
+                // left alone.
+                let appexID = DirectShareEntryName.extensionBundleIdentifier(owner: owner, target: target.bundleIdentifier)
+                if ShareEntryProbe.probe(appexID) == .unregistered {
+                    register(url)
+                    if waitForRegistration(appexID) { _ = ShareEntryProbe.run(["-e", "use", "-i", appexID]) }
+                }
                 continue
             }
             do {
@@ -122,8 +136,10 @@ enum DirectShareEntries {
 
         let hostID = DirectShareEntryName.hostBundleIdentifier(owner: owner, target: target.bundleIdentifier)
         let appexID = DirectShareEntryName.extensionBundleIdentifier(owner: owner, target: target.bundleIdentifier)
-        let destination = root.appendingPathComponent("\(target.bundleIdentifier).app", isDirectory: true)
-        let staging = root.appendingPathComponent(".\(target.bundleIdentifier).building", isDirectory: true)
+        // Named after the sanitised identifier, never the raw one: a bundle
+        // identifier is whatever the app declares, `../` included.
+        let destination = root.appendingPathComponent("\(hostID).app", isDirectory: true)
+        let staging = root.appendingPathComponent(".\(UUID().uuidString).building", isDirectory: true)
         let fileManager = FileManager.default
         try? fileManager.removeItem(at: staging)
         defer { try? fileManager.removeItem(at: staging) }
@@ -161,15 +177,15 @@ enum DirectShareEntries {
         } catch {
             throw EntryError.failed(target.displayName)
         }
-        LSRegisterURL(destination as CFURL, true)
-        _ = ShareEntryProbe.run(["-a", destination.appendingPathComponent("Contents/PlugIns/\(appexName)").path])
+        register(destination)
 
         // pkd files the user's on/off choice under the identifier, which a
         // rebuild keeps. A new entry is blank — registered, never elected, and
-        // not in the menu — so it is switched on; a rebuilt one keeps whatever
-        // System Settings last said.
+        // not in the menu — so it is switched on; a rebuilt one stays off only
+        // if System Settings turned it off. A registration that does not show
+        // up in time is repaired by the next sync's probe.
         guard waitForRegistration(appexID) else { throw EntryError.notRegistered(target.displayName) }
-        if previousState == nil || previousState == .enabled {
+        if previousState != .disabled {
             _ = ShareEntryProbe.run(["-e", "use", "-i", appexID])
         }
     }
@@ -236,11 +252,12 @@ enum DirectShareEntries {
     }
 
     /// The bundle's whole identity in one string: rebuilt when Dukou is
-    /// updated or moved (the extension carries the app's path), when the row is
-    /// renamed, or when this file changes what it writes.
+    /// updated or moved (the extension carries the app's path), when the home
+    /// folder moves (it carries the relay's), when the row is renamed, or when
+    /// this file changes what it writes.
     private static func stamp(for target: ForwardTarget, app: Bundle) -> String {
         let build = app.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-        return "\(generatorVersion)|\(build)|\(app.bundleURL.path)|\(target.displayName)"
+        return "\(generatorVersion)|\(build)|\(app.bundleURL.path)|\(relayInbox.root.path)|\(target.displayName)"
     }
 
     // MARK: - On disk
@@ -263,10 +280,30 @@ enum DirectShareEntries {
         return found
     }
 
+    private static func register(_ entry: URL) {
+        LSRegisterURL(entry as CFURL, true)
+        _ = ShareEntryProbe.run(["-a", entry.appendingPathComponent("Contents/PlugIns/\(appexName)").path])
+    }
+
     private static func remove(_ entry: URL) {
         _ = ShareEntryProbe.run(["-r", entry.appendingPathComponent("Contents/PlugIns/\(appexName)").path])
         _ = ShareEntryProbe.run(["-u", entry.path], tool: lsregister)
         try? FileManager.default.removeItem(at: entry)
+    }
+
+    /// What a build that was killed half-way left behind. Each build has its
+    /// own directory, so one only counts as abandoned once it is old.
+    private static func removeAbandonedBuilds() {
+        let leftovers = (try? FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        )) ?? []
+        for url in leftovers where url.lastPathComponent.hasSuffix(".building") {
+            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            if Date().timeIntervalSince(modified ?? .distantPast) > 10 * 60 {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
     }
 
     /// pkd indexes a new bundle a moment after Launch Services hears of it.

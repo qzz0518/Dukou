@@ -19,8 +19,13 @@ final class InboxWatcher {
     private var debounce: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
 
-    init(inbox: Inbox, onChange: @escaping () -> Void) {
+    private let observesSignals: Bool
+
+    /// `observesSignals: false` watches the directory alone, for a second
+    /// inbox whose changes the first watcher's signals already cover.
+    init(inbox: Inbox, observesSignals: Bool = true, onChange: @escaping () -> Void) {
         self.inbox = inbox
+        self.observesSignals = observesSignals
         self.onChange = onChange
     }
 
@@ -29,6 +34,10 @@ final class InboxWatcher {
     }
 
     func start() {
+        guard observesSignals else {
+            startDirectorySource()
+            return
+        }
         DistributedNotificationCenter.default().addObserver(
             forName: InboxSignal.didChange,
             object: nil,
