@@ -181,6 +181,23 @@ for SLOT_ROW in "${SHARE_SLOTS[@]}"; do
 	APPEX_PATHS+=("$SLOT_APPEX")
 done
 
+# The 「发给 <app>」 template: the same extension, built like a slot but kept in
+# Contents/Helpers, where Launch Services does not register plug-ins, so it is
+# never an entry of its own. DirectShareEntries copies it once per app the user
+# lists, names it after the app and signs the copy on the user's Mac.
+TEMPLATE_APPEX="$APP/Contents/Helpers/DukouShareTarget.appex"
+mkdir -p "$TEMPLATE_APPEX/Contents/MacOS" "$TEMPLATE_APPEX/Contents/Resources"
+cp "$SHARE_BINARY" "$TEMPLATE_APPEX/Contents/MacOS/DukouShareTarget"
+cp "$SHARE_INFO" "$TEMPLATE_APPEX/Contents/Info.plist"
+PLIST="$TEMPLATE_APPEX/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleExecutable DukouShareTarget" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $APP_ID.ShareTarget" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :DKShareAction custom" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :DKAppGroupIdentifier $APP_GROUP" "$PLIST"
+APPEX_PATHS+=("$TEMPLATE_APPEX")
+
 # Entitlements are copied and rewritten rather than edited in place: a build
 # with APP_GROUP set must not leave the repository's files modified.
 BUILT_ENTITLEMENTS="$BUILD_ROOT/entitlements"
@@ -215,6 +232,11 @@ for SLOT_ROW in "${SHARE_SLOTS[@]}"; do
 		ditto "$LPROJ" "$SLOT_APPEX/Contents/Resources/$(basename "$LPROJ")"
 	done
 done
+# The template gets the strings tables only: its name is written per app when
+# it is copied.
+for LPROJ in "$ROOT/Resources/Localizations"/*.lproj; do
+	ditto "$LPROJ" "$TEMPLATE_APPEX/Contents/Resources/$(basename "$LPROJ")"
+done
 shopt -u nullglob
 
 if [ -f "$ROOT/Resources/AppIcon.icns" ]; then
@@ -227,7 +249,7 @@ ditto "$ROOT/Resources/Licenses" "$APP/Contents/Resources/Licenses"
 # Repository fallbacks are useful for `swift run`, but a distributable binary
 # must never reveal the builder's absolute checkout path.
 if [ "$CONFIG" = "release" ]; then
-	RELEASE_BINARIES=("$APP/Contents/MacOS/Dukou" "$HOST_BINARY")
+	RELEASE_BINARIES=("$APP/Contents/MacOS/Dukou" "$HOST_BINARY" "$TEMPLATE_APPEX/Contents/MacOS/DukouShareTarget")
 	for SLOT_ROW in "${SHARE_SLOTS[@]}"; do
 		IFS='|' read -r _ APPEX_NAME _ _ _ <<< "$SLOT_ROW"
 		RELEASE_BINARIES+=("$APP/Contents/PlugIns/$APPEX_NAME.appex/Contents/MacOS/$APPEX_NAME")
@@ -293,7 +315,7 @@ done
 echo "built $APP"
 echo "version $VERSION ($BUILD_NUMBER)"
 echo "app group $APP_GROUP"
-echo "share entries ${#APPEX_PATHS[@]}"
+echo "share entries ${#SHARE_SLOTS[@]}"
 echo "architectures $(lipo -archs "$APP/Contents/MacOS/Dukou")"
 if [ "$DISTRIBUTION" = "1" ]; then
 	echo "signed for Developer ID distribution"

@@ -34,9 +34,6 @@
 "暂存架" = "Shelf";
 "所选应用" = "the chosen app";
 "发送到自定义" = "Send to Custom";
-"发给…" = "Send to…";
-"还没有添加自定义应用。" = "No custom apps added yet.";
-"已取消" = "Cancelled";
 "这条转发没有指定目标 App。" = "This forward has no target app.";
 "Codex" = "Codex";
 "Claude" = "Claude";
@@ -123,14 +120,12 @@
 "未安装" = "Not installed";
 "移除" = "Remove";
 "移除 %@" = "Remove %@";
-"添加应用" = "Add App";
 "运行中的应用程序" = "Running Applications";
 "手动从访达中选择…" = "Choose in Finder…";
 "只粘贴文件路径" = "Paste path only";
 "激活 %@ 并粘贴文件。" = "Activates %@ and pastes the files.";
 "激活 %@ 并粘贴文件路径。" = "Activates %@ and pastes the file paths.";
 "添加其他应用" = "Add Another App";
-"转发时从下面的应用里挑一个。" = "Asks which of the apps below to send to.";
 "给终端类应用用：粘贴的是带引号的文件路径，跟把文件拖进终端一样。" = "For terminal-style apps: pastes the quoted file path, exactly as dropping the file on a terminal would.";
 "这次安装缺少生成入口所需的文件，请重新安装 Dukou。" = "This installation is missing the files needed to create entries. Reinstall Dukou.";
 "没有找到 %@，装好后再勾选。" = "Couldn’t find %@. Install it, then tick this again.";
@@ -264,7 +259,7 @@
 
 /* Attached prompt — Entries and quick WeChat forward */
 "附加 Prompt" = "Attached Prompt";
-"发给 Codex、Claude 或自定义应用时，把选中的 Prompt 一起粘过去。" = "Pasted along with the files when sending to Codex, Claude or a custom app.";
+"发给任何应用时，把选中的 Prompt 一起粘过去。" = "Pasted along with the files when sending to any app.";
 "导出的记录粘贴到目标应用时，把选中的 Prompt 一起粘过去。" = "Pasted along with the exported archive into the target app.";
 "添加 Prompt" = "Add Prompt";
 "使用这条 Prompt" = "Use this prompt";

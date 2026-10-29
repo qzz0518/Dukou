@@ -12,13 +12,11 @@
 #
 # Apps are not rows here. 「发给 Codex」, 「发给 Claude」 and every app the user
 # adds are generated on the user's Mac, one small app each, so the Share menu can
-# show the app's own icon (DirectShareEntries). 「发送到自定义」 stays as the one
-# entry that asks which app, and as the Developer ID–signed way in should the
-# generated ones ever stop working.
+# show the app's own icon (DirectShareEntries). They are copies of the template
+# make-app.sh builds into Contents/Helpers.
 #
 # slot | appex name | bundle id suffix | DKShareAction | default display name
 SHARE_SLOTS=(
 	"Shelf|DukouShare|Share|shelf|暂存到渡口"
 	"Clipboard|DukouShareClipboard|ShareClipboard|clipboard|复制到剪贴板"
-	"Custom|DukouShareCustom|ShareCustom|custom|发送到自定义"
 )

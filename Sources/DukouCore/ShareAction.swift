@@ -20,19 +20,18 @@ public enum ShareAction: String, Codable, Sendable, CaseIterable {
     case claude
     /// Put the files on the clipboard and stop there.
     case clipboard
-    /// Ask which app, every time. The entry itself names no destination and
-    /// neither does the intent the extension writes for it: the extension has no
-    /// interface left to ask in, so Dukou answers the question in-process —
-    /// straight through for one app, `TargetPickerPanel` for several. The Share
-    /// menu is built from signed bundles and cannot grow a row per app the user
-    /// installs, which is why one entry stands for all of them.
+    /// Forward to one app of the user's list. Every generated 「发给 <app>」
+    /// entry declares this and names its app in its Info.plist, and the 发给 ▸
+    /// menus send it with the row they were picked from. Until 0.1.18 it was
+    /// also 「发送到自定义」, one entry that asked which app.
     case custom
 
     public static let infoDictionaryKey = "DKShareAction"
 
     /// The entries Dukou.app itself carries, in the order the 入口 pane shows
-    /// them. Every app — Codex and Claude included — is a generated entry.
-    public static let builtInEntries: [ShareAction] = [.shelf, .clipboard, .custom]
+    /// them. Every app — Codex and Claude included — is a generated entry
+    /// whose action is `.custom` with the app named in its Info.plist.
+    public static let builtInEntries: [ShareAction] = [.shelf, .clipboard]
 
     /// The extension's own declaration. Falling back to `.shelf` keeps a
     /// mis-built bundle useful instead of silently dropping the share.

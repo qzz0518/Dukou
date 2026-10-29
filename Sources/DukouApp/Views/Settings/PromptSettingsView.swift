@@ -117,7 +117,7 @@ struct PromptSettingsView: View {
     private var switchDetail: String {
         switch surface {
         case .forward:
-            return L10n.text("发给 Codex、Claude 或自定义应用时，把选中的 Prompt 一起粘过去。")
+            return L10n.text("发给任何应用时，把选中的 Prompt 一起粘过去。")
         case .wechat, .moments:
             return L10n.text("导出的记录粘贴到目标应用时，把选中的 Prompt 一起粘过去。")
         }

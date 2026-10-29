@@ -120,7 +120,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         shelf.perform = { [weak self] in self?.forward($0) }
         shelf.openEntries = { [weak self] in self?.openMainWindow(.entries) }
-        runner.openEntries = { [weak self] in self?.openMainWindow(.entries) }
         shelfController = shelf
         actionRunner = runner
         let wechat = WeChatQuickForward(
@@ -233,11 +232,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// One door for every forward, wherever it was asked for: an arriving batch,
-    /// the shelf's 发给 ▸ menu, 记录's. Remembering the target here rather than
-    /// in `ActionRunner` keeps the runner ignorant of the user's list — it only
-    /// ever needs the one app it is about to activate.
+    /// the shelf's 发给 ▸ menu, 记录's.
     private func forward(_ arrival: ArrivedBatch) {
-        if let target = arrival.target { forwardTargets.recordUse(target) }
         actionRunner?.handle(arrival)
     }
 

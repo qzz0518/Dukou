@@ -73,34 +73,3 @@ final class ShareFailureTests: XCTestCase {
         XCTAssertTrue(temporary.reader.consumeFailures().isEmpty)
     }
 }
-
-/// 「发送到自定义」 without a panel: what the app does with the list it finds.
-///
-/// The rule the user asked for is the middle case — one app is not a choice —
-/// and it is the reason this is a value rather than three branches buried in
-/// `ActionRunner`, which has no test target of its own.
-final class CustomForwardDecisionTests: XCTestCase {
-    private func target(_ identifier: String) -> ForwardTarget {
-        ForwardTarget(
-            bundleIdentifier: identifier,
-            displayName: identifier,
-            addedAt: Date(timeIntervalSince1970: 1_772_000_000)
-        )
-    }
-
-    func testAnEmptyListAsksNothingAndSendsNothing() {
-        XCTAssertEqual(CustomForwardDecision.decide(targets: []), .none)
-    }
-
-    func testASingleAppIsForwardedWithoutAsking() {
-        let only = target("com.apple.TextEdit")
-        XCTAssertEqual(CustomForwardDecision.decide(targets: [only]), .single(only))
-    }
-
-    func testTwoOrMoreAppsAreOfferedInTheOrderGiven() {
-        let list = [target("a"), target("b"), target("c")]
-        // Order is preserved because the caller has already put the last-used
-        // app first, and the panel's first row is the one Return picks.
-        XCTAssertEqual(CustomForwardDecision.decide(targets: list), .choose(list))
-    }
-}

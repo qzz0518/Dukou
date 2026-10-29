@@ -148,45 +148,45 @@ final class ForwardTargets: ObservableObject {
 
     init() {
         targets = store.load()
-        seedCodexAndClaude()
+        migrateToAppEntries()
     }
 
-    /// Until 0.1.18, 「发给 Codex」 and 「发给 Claude」 were entries inside
-    /// Dukou.app, drawn with Dukou's icon. They are rows of this list now, so
-    /// they show their own icons like any app's; each is added once, switched
-    /// on if the app is installed. A row the user removes stays removed.
-    private func seedCodexAndClaude() {
+    /// Once, on the first launch of 0.1.18. Until then 「发给 Codex」 and
+    /// 「发给 Claude」 were entries inside Dukou.app, drawn with Dukou's icon, and
+    /// every other app was reached through 「发送到自定义」, which asked which
+    /// one. Both are gone: each app is its own entry with its own icon. So
+    /// Codex and Claude are added as rows, and every installed app — those two
+    /// and the ones already listed — is switched on, or the update would take
+    /// away the user's only way to it. A row removed later stays removed.
+    private func migrateToAppEntries() {
         let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: Self.seededKey) else { return }
-        defaults.set(true, forKey: Self.seededKey)
+        guard !defaults.bool(forKey: Self.migratedKey) else { return }
+        defaults.set(true, forKey: Self.migratedKey)
         let seeds: [ForwardTarget] = [ShareAction.codex, .claude].compactMap { action in
             guard let identifier = action.targetBundleIdentifier, !contains(identifier) else { return nil }
+            return ForwardTarget(bundleIdentifier: identifier, displayName: action.targetDisplayName, addedAt: Date())
+        }
+        targets = (seeds + targets).map { target in
+            let installed = NSWorkspace.shared.urlForApplication(withBundleIdentifier: target.bundleIdentifier) != nil
+            guard installed, !target.showsInShareMenu else { return target }
             return ForwardTarget(
-                bundleIdentifier: identifier,
-                displayName: action.targetDisplayName,
-                addedAt: Date(),
-                showsInShareMenu: NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) != nil
+                bundleIdentifier: target.bundleIdentifier,
+                displayName: target.displayName,
+                addedAt: target.addedAt,
+                pastesPathOnly: target.pastesPathOnly,
+                showsInShareMenu: true
             )
         }
-        guard !seeds.isEmpty else { return }
-        targets.insert(contentsOf: seeds, at: 0)
         persist()
     }
 
-    private static let seededKey = "dev.dukou.seededCodexAndClaude"
+    private static let migratedKey = "dev.dukou.migratedToAppEntries"
 
     var isEmpty: Bool { targets.isEmpty }
 
     /// In the order the user arranged them.
     var destinations: [ForwardDestination] {
         targets.map { ForwardDestination(action: .custom, target: $0) }
-    }
-
-    /// The order 「发送到自定义」 offers them in: last pick first, then the
-    /// order the user arranged. The panel's top row is the one Return takes, so
-    /// this is the whole of "the app you used last is one keystroke away".
-    var orderedTargets: [ForwardTarget] {
-        ForwardTargetStore.ordered(targets, lastUsed: store.lastUsedBundleIdentifier())
     }
 
     /// Never a target: Dukou would paste into itself, and Finder has no text
@@ -387,14 +387,5 @@ final class ForwardTargets: ObservableObject {
             guard !Task.isCancelled else { return }
             self?.highlighted = nil
         }
-    }
-
-    // MARK: - Use
-
-    /// Remembered so the share panel opens on the app the user picked last, and
-    /// Return takes it. A forward started from a Dukou menu counts too: it is
-    /// the same decision, made from a different surface.
-    func recordUse(_ target: ForwardTarget) {
-        store.recordLastUsed(target.bundleIdentifier)
     }
 }

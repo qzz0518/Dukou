@@ -112,7 +112,7 @@ struct ShareEntryList: View {
         case .shelf: L10n.text("放到暂存架，自己拖到任何 App。")
         case .codex, .claude: L10n.format("激活 %@ 并粘贴文件。", action.targetDisplayName)
         case .clipboard: L10n.text("只放进剪贴板。")
-        case .custom: L10n.text("转发时从下面的应用里挑一个。")
+        case .custom: ""
         }
     }
 }

@@ -125,9 +125,8 @@ enum DirectShareEntries {
         replacing previous: URL?,
         app: Bundle
     ) throws {
-        guard let template = app.builtInPlugInsURL?.appendingPathComponent("DukouShareCustom.appex"),
-              FileManager.default.fileExists(atPath: template.path)
-        else { throw EntryError.missingTemplate }
+        let template = app.bundleURL.appendingPathComponent("Contents/Helpers/\(appexName)")
+        guard FileManager.default.fileExists(atPath: template.path) else { throw EntryError.missingTemplate }
         let hostBinary = app.bundleURL.appendingPathComponent("Contents/Helpers/\(hostExecutable)")
         guard FileManager.default.isExecutableFile(atPath: hostBinary.path) else { throw EntryError.missingTemplate }
         guard let targetApp = NSWorkspace.shared.urlForApplication(withBundleIdentifier: target.bundleIdentifier) else {

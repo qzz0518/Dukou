@@ -168,19 +168,6 @@ final class ForwardTargetTests: XCTestCase {
         XCTAssertEqual(FilePasteboard.shellLine(for: []), "")
     }
 
-    /// The panel opens on the app used last, and Return picks the first row.
-    func testTheLastUsedTargetIsMovedToTheTop() {
-        let first = ForwardTarget(bundleIdentifier: "a.one", displayName: "One", addedAt: fixedDate())
-        let second = ForwardTarget(bundleIdentifier: "a.two", displayName: "Two", addedAt: fixedDate(60))
-
-        XCTAssertEqual(ForwardTargetStore.ordered([first, second], lastUsed: nil), [first, second])
-        XCTAssertEqual(ForwardTargetStore.ordered([first, second], lastUsed: "a.two"), [second, first])
-        // A pointer at an app that has since been removed from the list must not
-        // drop it, duplicate it, or reorder anything.
-        XCTAssertEqual(ForwardTargetStore.ordered([first], lastUsed: "a.two"), [first])
-        XCTAssertTrue(ForwardTargetStore.ordered([], lastUsed: "a.two").isEmpty)
-    }
-
     // MARK: - The intent
 
     func testAnIntentWithoutTargetFieldsIsStillReadable() throws {

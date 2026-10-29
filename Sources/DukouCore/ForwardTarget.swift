@@ -132,7 +132,6 @@ public enum DirectShareEntryName {
 /// every existing install keeps its list.
 public struct ForwardTargetStore: Sendable {
     public static let defaultsKey = "dev.dukou.forwardTargets"
-    public static let lastUsedKey = "dev.dukou.lastForwardTarget"
 
     private let appGroupIdentifier: String
 
@@ -160,13 +159,6 @@ public struct ForwardTargetStore: Sendable {
         defaults.set(data, forKey: Self.defaultsKey)
     }
 
-    /// Last pick first, then stored order. The panel opens on the target the
-    /// user chose the previous time, which is the one they are most likely to
-    /// want again — and Return is bound to the first row.
-    public func orderedTargets() -> [ForwardTarget] {
-        Self.ordered(load(), lastUsed: lastUsedBundleIdentifier())
-    }
-
     // MARK: - The wire format
     //
     // Split out as pure functions so the tests can exercise them without
@@ -185,26 +177,6 @@ public struct ForwardTargetStore: Sendable {
     /// preference must not stop the share panel from opening.
     public static func decode(_ data: Data) -> [ForwardTarget] {
         (try? decoder().decode([ForwardTarget].self, from: data)) ?? []
-    }
-
-    /// A pointer at an app that is no longer in the list changes nothing.
-    public static func ordered(_ targets: [ForwardTarget], lastUsed: String?) -> [ForwardTarget] {
-        guard let lastUsed,
-              let index = targets.firstIndex(where: { $0.bundleIdentifier == lastUsed })
-        else { return targets }
-        var ordered = targets
-        ordered.insert(ordered.remove(at: index), at: 0)
-        return ordered
-    }
-
-    public func lastUsedBundleIdentifier() -> String? {
-        defaults?.string(forKey: Self.lastUsedKey)
-    }
-
-    /// Written whenever a forward is carried out, whether it came from a share
-    /// or from a 发给 ▸ menu inside Dukou.
-    public func recordLastUsed(_ bundleIdentifier: String) {
-        defaults?.set(bundleIdentifier, forKey: Self.lastUsedKey)
     }
 
     // MARK: - Coding

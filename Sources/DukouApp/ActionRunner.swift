@@ -20,11 +20,6 @@ import Foundation
 /// files in the target app — so the only thing left to report is a failure.
 @MainActor
 final class ActionRunner {
-    /// Opens 设置 → 入口, which is the only place the 「发送到自定义」 list can be
-    /// filled in. Offered as the one action on the toast a share raises when
-    /// that list is empty.
-    var openEntries: (() -> Void)?
-
     /// Something other than the shelf that owns the top-right corner while it is
     /// up — today the quick forward's HUD. The shelf is suspended for the length
     /// of a forward, so without this the toast reads that corner as free and
@@ -34,14 +29,12 @@ final class ActionRunner {
     private let model: AppModel
     private let shelf: ShelfController
     private let authorization: AccessibilityAuthorization
-    /// The user's own destinations, read when 「发送到自定义」 arrives without one
-    /// — which is every share, now that the extension no longer asks.
+    /// The user's own list, asked for a row's paste mode at forward time.
     private let targets: ForwardTargets
     /// For the 附加 Prompt settings: which prompt, and whether forwards attach
     /// one at all.
     private let preferences: Preferences
     private let toast = ToastPresenter()
-    private let picker = TargetPickerPanel()
     /// The forward currently in flight, so the next one waits for it.
     ///
     /// `forward` writes the clipboard and then suspends for seconds — launching
@@ -70,10 +63,6 @@ final class ActionRunner {
         // The two floating windows share one corner, so the toast has to know
         // where the shelf is before it can decide not to sit on it.
         toast.shelfFrame = { [weak shelf, weak self] in shelf?.visibleFrame ?? self?.reservedFrame() }
-        // The open question is anchored to the click that raised it, not to the
-        // shelf, so moving the shelf no longer moves it. Dismissing it instead is
-        // not an option either: a question that disappeared because the user
-        // tidied their shelf would cancel a forward they never cancelled.
     }
 
     func enqueueExclusive(_ operation: @escaping @MainActor () async -> Void) {
@@ -103,107 +92,24 @@ final class ActionRunner {
             // Dukou talking over the system.
         case .codex, .claude, .custom:
             // Shares and WeChat captures share the same clipboard queue.
-            //
-            // Read here rather than where the panel opens. This forward may wait
-            // in the queue behind a 快捷微信转发, and that run drives WeChat with
-            // synthetic clicks that move the real cursor — so by the time the
-            // panel is placed the pointer is parked on whatever WeChat control
-            // the automation pressed last, on WeChat's display. Now is the
-            // moment the user's own gesture is still the last thing that moved
-            // it. `.custom` is the only action that asks anything; the others
-            // carry the value harmlessly.
-            let pointer = NSEvent.mouseLocation
             let previous = pending
             pending = Task { [weak self] in
                 await previous?.value
                 guard let self else { return }
                 // Checked again here, not only when the intent came off disk.
                 // A forward can wait in this queue for as long as the one in
-                // front of it takes — an unanswered picker, a target app that
-                // never comes frontmost — and `BatchIntent.freshnessWindow`
-                // exists precisely so that a request the user has stopped
-                // thinking about does not suddenly paste into whatever they
-                // have open now. The files are on the clipboard either way.
+                // front of it takes — a target app that never comes frontmost,
+                // a 快捷微信转发 — and `BatchIntent.freshnessWindow` exists
+                // precisely so that a request the user has stopped thinking
+                // about does not suddenly paste into whatever they have open
+                // now. The files are on the clipboard either way.
                 guard arrival.isFresh else {
                     self.model.recordExpired(urls: arrival.urls)
                     return
                 }
-                await self.deliver(arrival, askingNear: pointer)
+                await self.forward(arrival)
             }
         }
-    }
-
-    /// One step before `forward`: 「发送到自定义」 arrives without a destination
-    /// and has to be given one.
-    ///
-    /// Every other entry — and every 发给 ▸ menu inside Dukou, which names the
-    /// app in the row the user clicked — arrives knowing where it is going and
-    /// goes straight through.
-    /// `askingNear` is where the pointer was when the share arrived — see
-    /// `handle`, which reads it before this forward can be delayed by another.
-    private func deliver(_ arrival: ArrivedBatch, askingNear pointer: NSPoint) async {
-        guard arrival.action == .custom, arrival.target == nil else {
-            await forward(arrival)
-            return
-        }
-
-        switch CustomForwardDecision.decide(targets: targets.orderedTargets) {
-        case .none:
-            // Nothing to send to and nothing to ask. The share is not lost —
-            // the files are on the clipboard — so this is a message with a way
-            // out of it, not an error.
-            fallBack(
-                arrival,
-                message: L10n.text("还没有添加自定义应用。"),
-                action: ToastPresenter.Action(title: L10n.text("添加应用")) { [weak self] in
-                    self?.openEntries?()
-                }
-            )
-        case .single(let target):
-            // One app is not a choice. The user's requirement, and the reason
-            // no panel appears here.
-            await forward(arrival, to: target)
-        case .choose(let list):
-            // Written before the panel opens rather than after a pick, so that
-            // cancelling still leaves the user one ⌘V from their files.
-            FilePasteboard.write(arrival.urls)
-            // Where the user was pointing when this arrived. The panel answers
-            // that gesture and stays put afterwards, so the pointer is read once,
-            // in `handle`, and never again while the panel is open. Parking it in
-            // the shelf's corner instead put it on the menu-bar screen — the wrong
-            // display for anyone whose WeChat is on the other one (2026-09-07).
-            let answer = await picker.choose(from: list) { size in
-                FloatingCapsule.near(pointer, size: size)
-            }
-            switch answer {
-            case .picked(let target):
-                await forward(arrival, to: target)
-            case .cancelled:
-                // Cancelling is an answer, not a fault: no toast — the user
-                // just dismissed a panel and knows they did — but the history
-                // has to say why nothing was delivered.
-                model.recordFailure(L10n.text("已取消"), urls: arrival.urls)
-            case .expired:
-                // Nobody answered for a minute and a half. Same record as an
-                // intent that outlived its window, because that is what it is:
-                // 未执行, files on the clipboard, nothing pasted anywhere.
-                model.recordExpired(urls: arrival.urls)
-            }
-        }
-    }
-
-    /// Remembers the pick, then forwards. The next 「发送到自定义」 share opens
-    /// the panel on this app, and Return takes it.
-    private func forward(_ arrival: ArrivedBatch, to target: ForwardTarget) async {
-        targets.recordUse(target)
-        await forward(
-            ArrivedBatch(
-                action: arrival.action,
-                target: target,
-                urls: arrival.urls,
-                requestedAt: arrival.requestedAt
-            )
-        )
     }
 
     /// A share the extension could not complete. It has no interface of its own
@@ -238,19 +144,19 @@ final class ActionRunner {
 
     /// One path for every destination.
     ///
-    /// The two built-in entries name their app in `ShareAction`; 「发送到自定义」
-    /// arrives here with the app `deliver` resolved, or the one a 发给 ▸ menu
-    /// named. Beyond resolving which of the two it is, nothing here knows the
+    /// Every share names its app: a 「发给 <app>」 entry in its intent, a 发给 ▸
+    /// menu in the row the user clicked, and a batch from a build before 0.1.18
+    /// through `ShareAction` for 发给 Codex / Claude. Nothing here knows the
     /// difference — a forward is a bundle identifier, a display name and a ⌘V.
     private func forward(_ arrival: ArrivedBatch) async {
         let action = arrival.action
         let target = arrival.target
         let name = target?.displayName ?? action.targetDisplayName
 
-        // A custom forward with no target should be impossible — `deliver`
-        // resolves one or stops — so reaching here means a build mismatch about
-        // the intent schema. The files are still on the clipboard, and saying so
-        // beats pretending an app is missing.
+        // Only an older build's 「发送到自定义」, which asked which app, writes a
+        // forward with no app; this build has no one left to ask. The files are
+        // still on the clipboard, and saying so beats pretending an app is
+        // missing.
         guard let bundleIdentifier = target?.bundleIdentifier ?? action.targetBundleIdentifier else {
             fallBack(arrival, message: L10n.text("这条转发没有指定目标 App。"))
             return
