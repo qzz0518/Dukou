@@ -13,7 +13,7 @@
 </div>
 
 <p align="center">
-  <img src="Resources/Screenshots/wechat-forward.png" width="720" alt="WeChat 4.1.13's forward-to-other-apps menu, with Dukou's five entries listed beside the system share services" />
+  <img src="Resources/Screenshots/wechat-forward.png" width="720" alt="WeChat 4.1.13's forward-to-other-apps menu, with Dukou's entries beside the system share services, each app shown with its own icon" />
 </p>
 
 <p align="center">
@@ -28,26 +28,24 @@
 
 Since WeChat 4.1.13 for macOS, a multi-selection of chat history can be merge-forwarded to third-party apps: WeChat itself packs the text, images and videos into one ZIP with a time-ordered TXT transcript. That is exactly what an AI agent needs to read a complete stream of a conversation, and it involves no database and no keys: the content only ever travels as the file WeChat exported.
 
-The catch is that the "Other Apps" list in the forward window ("Forward to Other Apps" in WeChat 4.1.13) only shows apps that ship a share extension. Finder is not there, nor Terminal, nor Codex or Claude. Dukou puts them there. The forward menu gains five entries, and each one goes straight where it says:
+The catch is that the "Other Apps" list in the forward window ("Forward to Other Apps" in WeChat 4.1.13) only shows apps that ship a share extension. Finder is not there, nor Terminal, nor Codex or Claude. Dukou puts them there, and each entry goes straight where it says:
 
 | Entry | What it does |
 |---|---|
 | **Stash in Dukou** | Lands on the shelf in a corner of the screen; drag from the icon into any app |
-| **Send to Codex** | Brings ChatGPT forward and pastes into its input |
-| **Send to Claude** | Brings Claude forward and pastes into its input |
 | **Copy to Clipboard** | Just puts it on the clipboard; the ⌘V is yours |
-| **Send to Custom** | Your own list of apps: one app just goes, two or more get a small picker card next to the pointer |
+| **Send to Codex / Claude / any app** | One entry per app, with the app's own icon: brings it forward and pastes into its input. Codex and Claude are there from the start; add others in Settings → Entries |
 
 One step further, Quick WeChat forward and Quick Moments forward (experimental) do the selecting, exporting and pasting for you — just name what you want and how much of it.
 
 ## Features
 
 - **No interface in the extension.** Pick an entry and the files just land; nothing appears on screen.
-- **Entries you can switch off.** Each entry is a separate system extension, toggled in Settings → Entries.
+- **Entries you can switch off.** Each entry is a separate system extension, toggled in Settings → Entries; removing an app removes its entry from the system too.
 - **A shelf.** A floating square in a screen corner that never takes focus; drag out and it is consumed, the files move to History.
 - **History that cleans itself.** Batches older than the retention window (7 days by default) go to the Trash and can be put back on the shelf.
-- **Send to any app.** Keep your own list under Send to Custom; terminal-like apps can receive file paths instead. Tick Direct entry and the app gets its own "Send to …" item, with its icon, in WeChat's menu.
-- **Attached prompt.** A prompt of your own is pasted before the files when sending to Codex, Claude or a custom app; keep up to three.
+- **Send to any app.** Add an app in Settings → Entries and WeChat's menu gains a "Send to …" item with its icon; terminal-like apps can receive file paths instead.
+- **Attached prompt.** A prompt of your own is pasted before the files when sending to any app; keep up to three.
 - **Failures have a way out.** App missing, permission missing or app not in front: the files are already on the clipboard and can go to the shelf.
 - **Quick WeChat forward (experimental).** Name a group and a count; Dukou selects and merge-forwards in WeChat, then pastes the ZIP into the current app or saves it to a folder. Photos and videos are optional, batches past 100 can be combined into one ZIP, and ESC stops it.
 - **Offline HTML preview.** An `index.html` inside the ZIP for browsing the chat as bubbles in your browser: search, filter by date, view images, play audio and video.
