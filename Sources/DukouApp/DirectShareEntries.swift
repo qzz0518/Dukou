@@ -89,8 +89,7 @@ enum DirectShareEntries {
                 let appexID = DirectShareEntryName.extensionBundleIdentifier(owner: owner, target: target.bundleIdentifier)
                 switch election(appexID) {
                 case nil:
-                    register(url)
-                    if waitForRegistration(appexID) { _ = ShareEntryProbe.run(["-e", "use", "-i", appexID]) }
+                    if register(url, appexID: appexID) { _ = ShareEntryProbe.run(["-e", "use", "-i", appexID]) }
                 case .unelected?:
                     _ = ShareEntryProbe.run(["-e", "use", "-i", appexID])
                 case .on?, .off?:
@@ -189,14 +188,13 @@ enum DirectShareEntries {
         } catch {
             throw EntryError.failed(target.displayName)
         }
-        register(destination)
 
         // pkd files the user's on/off choice under the identifier, which a
         // rebuild keeps. A new entry is blank — registered, never elected, and
         // not in the menu — so it is switched on; a rebuilt one stays off only
         // if System Settings turned it off. One that does not show up in time
         // is elected by the next sync.
-        guard waitForRegistration(appexID) else { throw EntryError.notRegistered(target.displayName) }
+        guard register(destination, appexID: appexID) else { throw EntryError.notRegistered(target.displayName) }
         if previousElection != .off {
             _ = ShareEntryProbe.run(["-e", "use", "-i", appexID])
         }
@@ -308,9 +306,26 @@ enum DirectShareEntries {
         return takenByAnother ? root.appendingPathComponent("\(name) · \(hostID).app", isDirectory: true) : preferred
     }
 
-    private static func register(_ entry: URL) {
-        LSRegisterURL(entry as CFURL, true)
-        _ = ShareEntryProbe.run(["-a", entry.appendingPathComponent("Contents/PlugIns/\(appexName)").path])
+    /// pkd indexes a new bundle a moment after Launch Services hears of it —
+    /// and now and then not at all: an entry rebuilt while pkd was busy stayed
+    /// unlisted through `LSRegisterURL` and `pluginkit -a`, and showed up at
+    /// once after `lsregister -f` (measured on the notarized 0.1.18,
+    /// 2026-10-30). So a round that times out is retried in the forced form.
+    private static func register(_ entry: URL, appexID: String) -> Bool {
+        let appex = entry.appendingPathComponent("Contents/PlugIns/\(appexName)").path
+        for attempt in 0..<3 {
+            if attempt == 0 {
+                LSRegisterURL(entry as CFURL, true)
+            } else {
+                _ = ShareEntryProbe.run(["-f", entry.path], tool: lsregister)
+            }
+            _ = ShareEntryProbe.run(["-a", appex])
+            for _ in 0..<20 {
+                if ShareEntryProbe.probe(appexID) != .unregistered { return true }
+                Thread.sleep(forTimeInterval: 0.15)
+            }
+        }
+        return false
     }
 
     private static func remove(_ entry: URL) {
@@ -360,15 +375,6 @@ enum DirectShareEntries {
             let identifier = DirectShareEntryName.extensionBundleIdentifier(owner: owner, target: target.bundleIdentifier)
             return election(identifier) == .off ? target.bundleIdentifier : nil
         })
-    }
-
-    /// pkd indexes a new bundle a moment after Launch Services hears of it.
-    private static func waitForRegistration(_ identifier: String) -> Bool {
-        for _ in 0..<20 {
-            if ShareEntryProbe.probe(identifier) != .unregistered { return true }
-            Thread.sleep(forTimeInterval: 0.15)
-        }
-        return false
     }
 
     /// Dukou itself usually runs from a downloaded bundle, and macOS marks what
