@@ -47,7 +47,9 @@ fi
 # 2. Every Share-menu entry: a unique identifier under the app's, a known
 #    action, and a localized display name in both languages. A slot that is
 #    declared but has no name silently ships an entry called "DukouShare".
-KNOWN_ACTIONS="$(grep -o 'case [a-z]*' "$ROOT/Sources/DukouCore/ShareAction.swift" | awk '{print $2}' | sort)"
+# `codex` and `claude` are only read back from old batches: since 0.1.18 those
+# apps are generated entries, like every app the user adds.
+KNOWN_ACTIONS="$(grep -o 'case [a-z]*' "$ROOT/Sources/DukouCore/ShareAction.swift" | awk '{print $2}' | grep -vxE 'codex|claude' | sort)"
 SEEN_IDS=""
 SEEN_NAMES=""
 for SLOT_ROW in "${SHARE_SLOTS[@]}"; do

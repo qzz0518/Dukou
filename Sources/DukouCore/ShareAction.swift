@@ -11,9 +11,12 @@ import Foundation
 public enum ShareAction: String, Codable, Sendable, CaseIterable {
     /// Park the files on the floating shelf and let the user drag them out.
     case shelf
-    /// Paste into ChatGPT's Codex.
+    /// Paste into Codex. Until 0.1.18 this and `.claude` were entries of their
+    /// own inside Dukou.app; they are rows of the user's list now, generated
+    /// like any other app's (`DirectShareEntries`). The cases stay so batches
+    /// and history written by older builds still read.
     case codex
-    /// Paste into Claude.
+    /// Paste into Claude. See `.codex`.
     case claude
     /// Put the files on the clipboard and stop there.
     case clipboard
@@ -26,6 +29,10 @@ public enum ShareAction: String, Codable, Sendable, CaseIterable {
     case custom
 
     public static let infoDictionaryKey = "DKShareAction"
+
+    /// The entries Dukou.app itself carries, in the order the 入口 pane shows
+    /// them. Every app — Codex and Claude included — is a generated entry.
+    public static let builtInEntries: [ShareAction] = [.shelf, .clipboard, .custom]
 
     /// The extension's own declaration. Falling back to `.shelf` keeps a
     /// mis-built bundle useful instead of silently dropping the share.

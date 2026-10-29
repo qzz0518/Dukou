@@ -18,6 +18,7 @@ import UniformTypeIdentifiers
 struct OnboardingFlow: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var authorization: AccessibilityAuthorization
+    @ObservedObject var targets: ForwardTargets
     /// Closes the guide. The app opens 设置 behind it, so the last step has
     /// nothing else to ask.
     let finish: () -> Void
@@ -30,10 +31,12 @@ struct OnboardingFlow: View {
     init(
         preferences: Preferences,
         authorization: AccessibilityAuthorization,
+        targets: ForwardTargets,
         finish: @escaping () -> Void
     ) {
         self.preferences = preferences
         self.authorization = authorization
+        self.targets = targets
         self.finish = finish
         _step = State(initialValue: Step(rawValue: preferences.onboardingStep) ?? .entries)
     }
@@ -102,13 +105,13 @@ struct OnboardingFlow: View {
             AuroraBackdrop()
             Group {
                 switch step {
-                case .entries: ShareMenuArt()
+                case .entries: ShareMenuArt(targets: targets)
                 case .shelf: ShelfArt()
                 case .permissions: PermissionArt()
                 // The same menu step 1 promised, now as the thing to go and
                 // look for. It is the one picture the last step's sentence is
                 // actually about.
-                case .done: ShareMenuArt()
+                case .done: ShareMenuArt(targets: targets)
                 }
             }
             .frame(width: Metrics.onboardingArtContentWidth)
@@ -141,7 +144,7 @@ struct OnboardingFlow: View {
                 subtitle: L10n.text("把微信里的聊天记录压缩包接住，再拖给任何一个 App。")
             )
 
-            ShareEntryList(probe: probe, spacing: Space.m)
+            ShareEntryList(probe: probe, targets: targets, spacing: Space.m, editable: false)
                 .padding(.top, 20)
 
             StepFooter(next: (L10n.text("继续"), { step = .shelf }))
@@ -321,6 +324,8 @@ private struct StepFooter: View {
 /// rather than screenshotted, because a screenshot of someone else's menu ages
 /// the moment they restyle it.
 private struct ShareMenuArt: View {
+    @ObservedObject var targets: ForwardTargets
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(L10n.text("其他应用"))
@@ -329,20 +334,24 @@ private struct ShareMenuArt: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 10)
 
-            ForEach(ShareAction.allCases, id: \.self) { action in
-                HStack(spacing: 10) {
+            ForEach(ShareAction.builtInEntries, id: \.self) { action in
+                item(title: action.entryTitle) {
                     Image(systemName: ShareEntryList.symbol(for: action))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Theme.accent)
-                        .frame(width: 16)
-                    Text(action.entryTitle)
-                        .font(Typo.paneBody)
-                        .foregroundStyle(Theme.ink)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
+            }
+            // The apps show their own icons in the real menu, so they do here.
+            ForEach(targets.targets.filter(\.showsInShareMenu).prefix(3)) { target in
+                item(title: DirectShareEntryName.title(
+                    for: target.displayName,
+                    chinese: L10n.locale().identifier.hasPrefix("zh")
+                )) {
+                    Image(nsImage: InstalledApp.lookup(target.bundleIdentifier).icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 18, height: 18)
+                }
             }
         }
         .padding(.vertical, 14)
@@ -354,6 +363,19 @@ private struct ShareMenuArt: View {
         )
         .shadow(color: .black.opacity(0.10), radius: 16, y: 6)
         .accessibilityHidden(true)
+    }
+
+    private func item(title: String, @ViewBuilder icon: () -> some View) -> some View {
+        HStack(spacing: 10) {
+            icon().frame(width: 16)
+            Text(title)
+                .font(Typo.paneBody)
+                .foregroundStyle(Theme.ink)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
     }
 }
 

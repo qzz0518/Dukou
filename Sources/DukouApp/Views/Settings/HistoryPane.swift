@@ -139,8 +139,8 @@ struct HistoryPane: View {
                 actions.perform(destination.action, destination.target, urls)
             }
         }
-        // With nothing of the user's own in the list, 发给 is two built-ins and
-        // no sign that it can be grown, so the way to grow it is offered here.
+        // With nothing in the list, 发给 has no rows and no sign that it can
+        // be grown, so the way to grow it is offered here.
         if targets.isEmpty {
             items.append(SettingsAction(id: "entries", title: L10n.text("添加应用…")) {
                 actions.showEntries()

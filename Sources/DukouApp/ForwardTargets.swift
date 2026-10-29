@@ -97,21 +97,19 @@ struct RunningApp: Identifiable {
     }
 }
 
-/// One row of a 发给 ▸ menu: a built-in entry or one of the user's own apps.
+/// One row of a 发给 ▸ menu: one app of the user's list.
 ///
-/// The two are the same gesture with a different destination, so both 发给 ▸
-/// menus — the shelf's `NSMenu` and 记录's SwiftUI one — build themselves from
-/// this list instead of each deciding separately what belongs in it.
+/// Both 发给 ▸ menus — the shelf's `NSMenu` and 记录's SwiftUI one — build
+/// themselves from this list instead of each deciding separately what belongs
+/// in it. Codex and Claude are rows like any other since 0.1.18.
 struct ForwardDestination: Identifiable {
     let action: ShareAction
-    /// Nil for Codex and Claude, whose app the action already names.
     let target: ForwardTarget?
 
     var id: String { target?.bundleIdentifier ?? action.rawValue }
     /// The app, not the entry: inside a menu already titled 发给, 「发给 Codex」
     /// would say it twice.
     var title: String { target?.displayName ?? action.targetDisplayName }
-    var isBuiltIn: Bool { target == nil }
 }
 
 /// The user's own list of forward destinations, and the only thing that writes
@@ -127,7 +125,7 @@ final class ForwardTargets: ObservableObject {
     /// A row the user tried to add twice. Adding it again silently would look
     /// like the click did nothing; this makes the existing row answer instead.
     @Published private(set) var highlighted: String?
-    /// Why the last 单独入口 tick did not produce an entry. It stays until the
+    /// Why the last switch did not produce an entry. It stays until the
     /// user ticks or removes something again: the sync that follows a failure
     /// succeeds — it has one entry fewer to make — and must not take the
     /// explanation down with it.
@@ -150,18 +148,38 @@ final class ForwardTargets: ObservableObject {
 
     init() {
         targets = store.load()
+        seedCodexAndClaude()
     }
+
+    /// Until 0.1.18, 「发给 Codex」 and 「发给 Claude」 were entries inside
+    /// Dukou.app, drawn with Dukou's icon. They are rows of this list now, so
+    /// they show their own icons like any app's; each is added once, switched
+    /// on if the app is installed. A row the user removes stays removed.
+    private func seedCodexAndClaude() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: Self.seededKey) else { return }
+        defaults.set(true, forKey: Self.seededKey)
+        let seeds: [ForwardTarget] = [ShareAction.codex, .claude].compactMap { action in
+            guard let identifier = action.targetBundleIdentifier, !contains(identifier) else { return nil }
+            return ForwardTarget(
+                bundleIdentifier: identifier,
+                displayName: action.targetDisplayName,
+                addedAt: Date(),
+                showsInShareMenu: NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) != nil
+            )
+        }
+        guard !seeds.isEmpty else { return }
+        targets.insert(contentsOf: seeds, at: 0)
+        persist()
+    }
+
+    private static let seededKey = "dev.dukou.seededCodexAndClaude"
 
     var isEmpty: Bool { targets.isEmpty }
 
-    /// Built-ins first, then the user's own in the order they arranged them.
-    /// The one-key entries are not special beyond being first: they are simply
-    /// the two destinations Dukou ships knowing about.
+    /// In the order the user arranged them.
     var destinations: [ForwardDestination] {
-        [
-            ForwardDestination(action: .codex, target: nil),
-            ForwardDestination(action: .claude, target: nil),
-        ] + targets.map { ForwardDestination(action: .custom, target: $0) }
+        targets.map { ForwardDestination(action: .custom, target: $0) }
     }
 
     /// The order 「发送到自定义」 offers them in: last pick first, then the
@@ -212,7 +230,7 @@ final class ForwardTargets: ObservableObject {
 
     /// Appends, because the stored order is the order the panel and the menus
     /// show — a new app belongs at the end of the list the user arranged, not in
-    /// the middle of it.
+    /// the middle of it. Switched on: adding an app is asking for 「发给 <app>」.
     func add(bundleIdentifier: String, displayName: String) {
         guard !excluded.contains(bundleIdentifier) else { return }
         guard !contains(bundleIdentifier) else {
@@ -225,10 +243,15 @@ final class ForwardTargets: ObservableObject {
                 displayName: displayName,
                 addedAt: Date(),
                 pastesPathOnly: Self.terminalBundleIdentifiers.contains(bundleIdentifier),
-                showsInShareMenu: false
+                showsInShareMenu: true
             )
         )
         persist()
+        directShareError = nil
+        let tick = (entryTicks[bundleIdentifier] ?? 0) + 1
+        entryTicks[bundleIdentifier] = tick
+        revertIfEntryFails[bundleIdentifier] = tick
+        synchronizeDirectShareEntries()
     }
 
     /// 只粘贴文件路径, flipped from the row's checkbox. The value is replaced
@@ -249,8 +272,8 @@ final class ForwardTargets: ObservableObject {
         persist()
     }
 
-    /// 单独入口: the row's own 「发给 <app>」 in the Share menu, so a forward to
-    /// it is one tap in WeChat instead of 「发送到自定义」 and a pick.
+    /// The row's switch: its own 「发给 <app>」 in the Share menu, so a forward
+    /// to it is one tap in WeChat instead of 「发送到自定义」 and a pick.
     func setShowsInShareMenu(_ shows: Bool, for target: ForwardTarget) {
         guard let index = targets.firstIndex(where: { $0.bundleIdentifier == target.bundleIdentifier }),
               targets[index].showsInShareMenu != shows
@@ -308,7 +331,7 @@ final class ForwardTargets: ObservableObject {
     }
 
     /// Brings the generated entries in line with the list: at launch, and after
-    /// every change to a 单独入口. One sync at a time; changes made while one
+    /// every change to a row's switch. One sync at a time; changes made while one
     /// runs are picked up by a single follow-up that reads the list afresh.
     func synchronizeDirectShareEntries() {
         guard !isSyncingEntries else {

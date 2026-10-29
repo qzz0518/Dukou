@@ -171,6 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             OnboardingFlow(
                 preferences: preferences,
                 authorization: authorization,
+                targets: forwardTargets,
                 finish: { [weak self] in self?.finishOnboarding() }
             )
         }

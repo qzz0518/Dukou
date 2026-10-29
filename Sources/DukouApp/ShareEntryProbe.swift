@@ -68,11 +68,11 @@ final class ShareEntryProbe: ObservableObject {
         guard let base = Bundle.main.bundleIdentifier else {
             // No bundle identifier means no bundle: this is a `swift run`
             // binary, which installs no appex for pkd to have heard of.
-            states = Dictionary(uniqueKeysWithValues: ShareAction.allCases.map { ($0, .unregistered) })
+            states = Dictionary(uniqueKeysWithValues: ShareAction.builtInEntries.map { ($0, .unregistered) })
             return
         }
         isRefreshing = true
-        let entries = ShareAction.allCases.map { ($0, "\(base).\($0.bundleIdentifierSuffix)") }
+        let entries = ShareAction.builtInEntries.map { ($0, "\(base).\($0.bundleIdentifierSuffix)") }
         Self.queue.async {
             var probed: [ShareAction: ShareEntryState] = [:]
             for (action, identifier) in entries {

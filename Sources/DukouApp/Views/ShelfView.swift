@@ -414,24 +414,13 @@ struct ShelfView: View {
     /// be as long as they like, and a context menu that grows past 移到废纸篓
     /// buries the commands that were there first.
     private func forwardActions(urls: [URL]) -> [ShelfMenuAction] {
-        let destinations = targets.destinations
-        var children = destinations.filter(\.isBuiltIn).map { destination in
+        var children = targets.destinations.map { destination in
             ShelfMenuAction(title: destination.title) {
                 onAction(destination.action, destination.target, urls)
             }
         }
         if targets.isEmpty {
-            children.append(
-                ShelfMenuAction(title: L10n.text("添加应用…"), isSeparatorBefore: true) { onAddTarget() }
-            )
-        } else {
-            for (index, destination) in destinations.filter({ !$0.isBuiltIn }).enumerated() {
-                children.append(
-                    ShelfMenuAction(title: destination.title, isSeparatorBefore: index == 0) {
-                        onAction(destination.action, destination.target, urls)
-                    }
-                )
-            }
+            children.append(ShelfMenuAction(title: L10n.text("添加应用…")) { onAddTarget() })
         }
         return [
             ShelfMenuAction(title: L10n.text("发给"), children: children),

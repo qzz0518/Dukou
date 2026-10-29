@@ -4,10 +4,10 @@ import SwiftUI
 
 /// What the Share menu offers, and the switches that decide which of it shows.
 ///
-/// The list itself is fixed at build time — macOS builds that menu from signed
-/// extension bundles — but which entries are live is the user's call, and it is
-/// made here rather than three panes deep in System Settings. See
-/// `ShareEntryProbe` for why the app is not sandboxed.
+/// Three entries are built into Dukou.app; every app the user lists gets one
+/// generated on this Mac. Which are live is the user's call, and it is made
+/// here rather than three panes deep in System Settings. See `ShareEntryProbe`
+/// for why the app is not sandboxed.
 struct EntriesPane: View {
     @ObservedObject var targets: ForwardTargets
     @ObservedObject var preferences: Preferences
@@ -16,7 +16,7 @@ struct EntriesPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.section) {
             SettingsSection(title: L10n.text("转发菜单里的入口"), systemImage: "square.and.arrow.up") {
-                ShareEntryList(probe: probe)
+                ShareEntryList(probe: probe, targets: targets)
 
                 // Kept only as a way back to the system's own list — Dukou's
                 // switches write the same setting, so this is a bystander, not
@@ -25,10 +25,6 @@ struct EntriesPane: View {
                     Button(L10n.text("打开系统设置")) { LoginItem.openExtensionsSettings() }
                         .buttonStyle(SettingsActionButtonStyle())
                 }
-            }
-
-            SettingsSection(title: L10n.text("「发送到自定义」的应用"), systemImage: "arrow.up.forward.app") {
-                ForwardTargetList(targets: targets)
             }
 
             SettingsSection(title: L10n.text("附加 Prompt"), systemImage: "text.quote") {
