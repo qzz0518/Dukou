@@ -46,7 +46,7 @@ One step further, Quick WeChat forward and Quick Moments forward (experimental) 
 - **Entries you can switch off.** Each entry is a separate system extension, toggled in Settings → Entries.
 - **A shelf.** A floating square in a screen corner that never takes focus; drag out and it is consumed, the files move to History.
 - **History that cleans itself.** Batches older than the retention window (7 days by default) go to the Trash and can be put back on the shelf.
-- **Send to any app.** Keep your own list under Send to Custom; terminal-like apps can receive file paths instead.
+- **Send to any app.** Keep your own list under Send to Custom; terminal-like apps can receive file paths instead. Tick Direct entry and the app gets its own "Send to …" item, with its icon, in WeChat's menu.
 - **Attached prompt.** A prompt of your own is pasted before the files when sending to Codex, Claude or a custom app; keep up to three.
 - **Failures have a way out.** App missing, permission missing or app not in front: the files are already on the clipboard and can go to the shelf.
 - **Quick WeChat forward (experimental).** Name a group and a count; Dukou selects and merge-forwards in WeChat, then pastes the ZIP into the current app or saves it to a folder. Photos and videos are optional, batches past 100 can be combined into one ZIP, and ESC stops it.
