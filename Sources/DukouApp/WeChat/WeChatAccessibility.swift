@@ -7,7 +7,7 @@ import Vision
 
 enum WeChatAutomationError: Error, LocalizedError {
     case notRunning, interfaceHidden, wrongChat, busyChat, focusChanged, historyIncomplete, noMessages
-    case selection, loading, screenRecording, unsupportedLayout, missingShare, ambiguousReceipt, receiptTimeout, invalidArchive, timeRangeUnavailable
+    case selection, loading, unreadable, screenRecording, unsupportedLayout, missingShare, ambiguousReceipt, receiptTimeout, invalidArchive, timeRangeUnavailable
     case control(String)
 
     var errorDescription: String? {
@@ -21,6 +21,7 @@ enum WeChatAutomationError: Error, LocalizedError {
         case .noMessages: L10n.text("这个时间范围内没有消息。")
         case .selection: L10n.text("无法准确选中这一批消息，已停止。请缩小范围后重试。")
         case .loading: L10n.text("微信消息列表尚未稳定。请等待加载完成后重试。")
+        case .unreadable: L10n.text("微信显示的消息中有渡口读不出的条目，重试也不会好转，已停止。请把 ~/Library/Logs/Dukou/WeChat/latest.json 附到 GitHub 反馈中。")
         case .screenRecording: L10n.text("这个转发界面需要识别按钮位置。请在系统设置中为渡口开启屏幕录制权限后重试。")
         case .unsupportedLayout: L10n.text("没有定位到“其他应用”按钮，已停止。请保持微信转发窗口完整可见。")
         case .missingShare: L10n.text("没有找到「暂存到渡口」分享入口。请在设置的「入口」中启用它。")
@@ -153,6 +154,7 @@ final class WeChatAccessibility {
     private var prefetchRows = 0
     private var prefetchLoaded = 0
     private var snapshots: [[String: Any]] = []
+    private var unsettled: [String: Any]?
 
     init(chat: String, cancellation: WeChatCancellation, progress: @escaping (String) -> Void) throws {
         guard AXIsProcessTrusted() else { throw AutoPaste.Failure.notTrusted }
@@ -608,6 +610,11 @@ final class WeChatAccessibility {
         // step also re-matches the rows it already knew through
         // `WeChatViewport`, which no other conversation can satisfy.
         var verifiedHere = false
+        // What the last look saw, and since when the same unreadable rows
+        // have held still. Rows that keep an empty label or overlap for a
+        // second are how WeChat draws them, not a load waiting to finish.
+        var lastLook: (list: WCNode, rows: [WCNode])?
+        var stuck: (signature: String, since: Double)?
         repeat {
             try frontmost()
             var found: WCNode?
@@ -643,17 +650,51 @@ final class WeChatAccessibility {
                         $0.id == "chat_bubble_item_view" && !$0.rect.intersection(list.rect).isNull
                     }
                 }
+                lastLook = (list, rows)
+                let page = Page(list: list, rows: rows)
                 if !rows.isEmpty, rows.allSatisfy({ $0.readError == .success && !$0.strings.isEmpty }),
                    zip(rows, rows.dropFirst()).allSatisfy({ $0.rect.minY < $1.rect.minY }) {
-                    let page = Page(list: list, rows: rows)
+                    stuck = nil
                     if page.signature == previous { return page }
                     previous = page.signature
-                } else { previous = nil; settledList = nil }
-            } else { settledList = nil }
+                } else {
+                    previous = nil; settledList = nil
+                    if rows.isEmpty { stuck = nil }
+                    else if stuck?.signature != page.signature { stuck = (page.signature, clock()) }
+                }
+            } else { settledList = nil; lastLook = nil; stuck = nil }
             // The list settles on its own; this only paces the next look.
             try pause(0.02)
         } while clock() < deadline
+        recordUnsettled(lastLook)
+        if let stuck, clock() - stuck.since >= 1 { throw WeChatAutomationError.unreadable }
         throw WeChatAutomationError.loading
+    }
+
+    /// Which rows kept `stablePage` from returning, so a report's latest.json
+    /// says why. Same privacy as `observe`: geometry and hashes, no text.
+    private func recordUnsettled(_ look: (list: WCNode, rows: [WCNode])?) {
+        guard let look else { unsettled = ["phase": phase, "reason": "no-list"]; return }
+        let rows = look.rows
+        var reasons: [String] = []
+        if rows.isEmpty { reasons.append("no-rows") }
+        if rows.contains(where: { $0.strings.isEmpty }) { reasons.append("empty-text") }
+        if rows.contains(where: { $0.readError != .success }) { reasons.append("read-error") }
+        if zip(rows, rows.dropFirst()).contains(where: { $0.rect.minY >= $1.rect.minY }) { reasons.append("order") }
+        unsettled = ["phase": phase, "reason": reasons.isEmpty ? "moving" : reasons.joined(separator: "+"),
+            "listY": look.list.rect.minY, "listHeight": look.list.rect.height,
+            "rows": rows.prefix(40).map { row -> [String: Any] in
+                var entry: [String: Any] = ["hash": textHash(row), "role": row.role, "y": row.rect.minY, "height": row.rect.height,
+                                            "empty": row.strings.isEmpty, "readError": Int(row.readError.rawValue)]
+                // An unlabelled row may still carry its text one level down.
+                if row.strings.isEmpty {
+                    entry["children"] = row.children.prefix(8).map { child -> [String: Any] in
+                        let node = WCNode(child)
+                        return ["role": node.role, "id": node.id, "empty": node.strings.isEmpty]
+                    }
+                }
+                return entry
+            }]
     }
 
     private func checkedMessage(_ node: WCNode) throws -> String {
@@ -774,10 +815,13 @@ final class WeChatAccessibility {
     private func observe(_ label: String, _ page: Page) {
         snapshots.append(["stage": label, "firstY": page.list.rect.minY, "height": page.list.rect.height,
             "rows": page.rows.map { row -> [String: Any] in
-                let hash = SHA256.hash(data: Data((row.strings.first ?? "").utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
-                return ["hash": hash, "y": row.rect.minY, "height": row.rect.height, "selected": row.selected, "role": row.role]
+                ["hash": textHash(row), "y": row.rect.minY, "height": row.rect.height, "selected": row.selected, "role": row.role]
             }])
         if snapshots.count > 8 { snapshots.removeFirst() }
+    }
+
+    private func textHash(_ row: WCNode) -> String {
+        SHA256.hash(data: Data((row.strings.first ?? "").utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
     private func rangeControl() throws -> WCNode? {
@@ -1574,10 +1618,10 @@ final class WeChatAccessibility {
     }
 
     private func diagnostics(started: Double, outcome: String, count: Int) {
-        let report: [String: Any] = ["schemaVersion": 6, "strategy": "native-keyboard-range", "at": ISO8601DateFormatter().string(from: Date()),
+        let report: [String: Any] = ["schemaVersion": 7, "strategy": "native-keyboard-range", "at": ISO8601DateFormatter().string(from: Date()),
             "outcome": outcome, "phase": phase, "seconds": clock() - started, "messageCount": count,
             "navigationKeys": navigationKeys, "keyboardMessages": keyboardMessages, "scrolls": scrollCount, "scrollSeconds": scrollSeconds, "scanSeconds": scanSeconds, "scanCalls": scanCalls, "stableSeconds": stableSeconds, "exportSeconds": exportSeconds, "prefetchSeconds": prefetchSeconds, "prefetchRows": prefetchRows, "prefetchLoaded": prefetchLoaded, "scrollsByPhase": scrollsByPhase, "steps": steps, "clicks": clickCount, "rangeClicks": rangeClicks, "shiftRangeClicks": shiftRangeClicks, "exports": exportCount, "resumedBatches": resumedBatches, "keyboardPins": keyboardPins,
-            "snapshots": snapshots, "receiptReadRetries": receiptReadRetries,
+            "snapshots": snapshots, "unsettled": unsettled ?? [:], "receiptReadRetries": receiptReadRetries,
             "locator": locator, "visualMilliseconds": visualMilliseconds, "lastNodeCount": lastNodeCount,
             "scanTruncated": scanTruncated, "controlFailure": controlFailure ?? [:],
             "wechatVersion": app.bundleURL.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String } ?? "unknown"]
