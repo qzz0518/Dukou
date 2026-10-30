@@ -1,0 +1,7 @@
+## 更新日志
+
+- 微信里有渡口读不出的消息时，快捷转发会直接说明并停止，不再提示「等待后重试」；诊断日志会记下是哪几条。
+
+## Changelog
+
+- When WeChat shows messages Dukou cannot read, quick forward now says so and stops instead of asking you to wait and retry, and the diagnostic log records which rows they were.
