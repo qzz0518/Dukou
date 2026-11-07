@@ -165,7 +165,8 @@ struct SettingsView: View {
             QuickForwardFooter(
                 isBusy: wechat.isBusy, canRun: wechat.canRun, savesToFolder: wechat.draft.destinationFolder != nil,
                 status: wechat.status, error: wechat.error, elapsedSeconds: wechat.elapsedSeconds,
-                identifierPrefix: "wechat", onStart: { wechat.start() }, onCancel: { wechat.cancel() }
+                identifierPrefix: "wechat", onStart: { wechat.start() }, onCancel: { wechat.cancel() },
+                resumeFrom: wechat.resumableFrom, onResume: { wechat.resume() }
             )
         case .moments:
             QuickForwardFooter(

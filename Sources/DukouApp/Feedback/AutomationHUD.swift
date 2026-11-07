@@ -17,6 +17,8 @@ final class AutomationHUD {
     private var isLeaving = false
     /// Live for as long as the capsule is up. See `watchForEscape`.
     private var escapeWatchers: [Any] = []
+    /// Top right unless `stepAside` has moved it for this run.
+    private var corner: ShelfCorner = .topRight
 
     /// Where it sits, so the failure toast can step aside instead of landing on
     /// the 取消 button. Same contract as `ShelfCoachMark.frame`.
@@ -32,6 +34,7 @@ final class AutomationHUD {
         let panel = self.panel ?? FloatingCapsule.panel()
         self.panel = panel
         let showing = panel.isVisible
+        if !showing { corner = .topRight }
         isLeaving = false
         watchForEscape()
         let frame = place(status, in: panel)
@@ -60,6 +63,32 @@ final class AutomationHUD {
     func update(status: String) {
         guard let panel, panel.isVisible else { return }
         _ = place(status, in: panel)
+    }
+
+    /// Moves out from over a point the automation is about to click.
+    ///
+    /// The capsule takes clicks — 取消 is on it — so a click posted where it
+    /// sits lands on Dukou, not on WeChat, and nothing says so. The top right
+    /// of the menu-bar screen is also where a large WeChat window keeps the top
+    /// of its message list, which is where every batch after the first
+    /// right-clicks its first message. `point` is in the space a CGEvent uses:
+    /// origin at the top left of the menu-bar screen, y down. True when the
+    /// capsule moved.
+    func stepAside(from point: CGPoint) -> Bool {
+        guard let panel, panel.isVisible, !isLeaving else { return false }
+        let target = NSPoint(x: point.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - point.y)
+        // A few points of rim, so a click on the very edge is not a toss-up.
+        guard panel.frame.insetBy(dx: -6, dy: -6).contains(target) else { return false }
+        let visible = FloatingCapsule.visibleFrame(holding: panel.frame)
+        let spots = ShelfCorner.allCases.filter { $0 != corner }.map { spot in
+            (spot, FloatingCapsule.clamped(FloatingCapsule.corner(spot, size: panel.frame.size, in: visible), in: visible))
+        }.filter { !$0.1.insetBy(dx: -6, dy: -6).contains(target) }
+        // The farthest one, so the next click nearby does not chase it again.
+        func distance(_ frame: NSRect) -> CGFloat { hypot(frame.midX - target.x, frame.midY - target.y) }
+        guard let best = spots.max(by: { distance($0.1) < distance($1.1) }) else { return false }
+        corner = best.0
+        panel.setFrame(best.1, display: true)
+        return true
     }
 
     /// Idempotent: a second call while the fade is running would only hang
@@ -119,7 +148,8 @@ final class AutomationHUD {
     }
 
     /// Writes the content and the frame, and answers with the frame — the top
-    /// right corner of the screen, which is where the toast lives too. Nothing
+    /// right corner of the screen, which is where the toast lives too, unless
+    /// `stepAside` has had to move it for this run. Nothing
     /// steps aside for the shelf: the shelf is suspended for the length of a
     /// forward (`ShelfController.suspendPresentation`), so there is nothing in
     /// that corner to avoid.
@@ -141,7 +171,7 @@ final class AutomationHUD {
         let size = FloatingCapsule.measure(hosting)
         let visible = FloatingCapsule.visibleFrame(holding: nil)
         let frame = FloatingCapsule.fitted(
-            FloatingCapsule.clamped(FloatingCapsule.corner(.topRight, size: size, in: visible), in: visible),
+            FloatingCapsule.clamped(FloatingCapsule.corner(corner, size: size, in: visible), in: visible),
             to: hosting
         )
         panel.setFrame(frame, display: true)

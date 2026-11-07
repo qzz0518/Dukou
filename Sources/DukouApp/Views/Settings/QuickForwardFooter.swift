@@ -16,6 +16,10 @@ struct QuickForwardFooter: View {
     let identifierPrefix: String
     let onStart: () -> Void
     let onCancel: () -> Void
+    /// Where an interrupted run would carry on from. WeChat only: Moments
+    /// has nothing a later run could pick up.
+    var resumeFrom: Int? = nil
+    var onResume: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -45,6 +49,14 @@ struct QuickForwardFooter: View {
                             .fixedSize()
                             .accessibilityIdentifier(identifierPrefix + ".cancel")
                     } else {
+                        if let resumeFrom {
+                            Button(L10n.format("从第 %@ 条继续", String(resumeFrom)), action: onResume)
+                                .buttonStyle(SettingsActionButtonStyle())
+                                .fixedSize()
+                                .disabled(!canRun)
+                                .help(L10n.text("接着上次中断的位置导出更早的消息，已导出的部分会一起送到。"))
+                                .accessibilityIdentifier(identifierPrefix + ".resume")
+                        }
                         Button(savesToFolder ? L10n.text("开始保存") : L10n.text("开始转发"), action: onStart)
                             .buttonStyle(SettingsActionButtonStyle(primary: true))
                             .fixedSize()

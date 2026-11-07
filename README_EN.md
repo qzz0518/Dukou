@@ -47,7 +47,7 @@ One step further, Quick WeChat forward and Quick Moments forward (experimental) 
 - **Send to any app.** Add an app in Settings → Entries and WeChat's menu gains a "Send to …" item with its icon; terminal-like apps can receive file paths instead.
 - **Attached prompt.** A prompt of your own is pasted before the files when sending to any app; keep up to three.
 - **Failures have a way out.** App missing, permission missing or app not in front: the files are already on the clipboard and can go to the shelf.
-- **Quick WeChat forward (experimental).** Name a group and a count; Dukou selects and merge-forwards in WeChat, then pastes the ZIP into the current app or saves it to a folder. Photos and videos are optional, batches past 100 can be combined into one ZIP, and ESC stops it.
+- **Quick WeChat forward (experimental).** Name a group and a count; Dukou selects and merge-forwards in WeChat, then pastes the ZIP into the current app or saves it to a folder. Photos and videos are optional, batches past 100 can be combined into one ZIP, and ESC stops it — a stopped run can pick up where it left off.
 - **Offline HTML preview.** An `index.html` inside the ZIP for browsing the chat as bubbles in your browser: search, filter by date, view images, play audio and video.
 - **Quick Moments forward (experimental).** Export a number of recent posts as a time-ordered TXT with the photos and videos in the same ZIP. Downloading is slow; ESC stops it.
 - **Resume and per-chat prompts.** Each chat remembers its own prompt, and sending the same chat again asks for only the messages after the last export.

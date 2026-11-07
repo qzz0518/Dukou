@@ -14,6 +14,8 @@ final class WeChatQuickForward: ObservableObject {
     }
     @Published private(set) var error: String?
     @Published private(set) var elapsedSeconds: Double?
+    /// The last run that stopped partway, while it can still be continued.
+    @Published private(set) var interrupted: WeChatForwardInterruption?
 
     private static let key = "wechatQuickForward.v1"
     private static let worker = DispatchQueue(label: "dev.dukou.wechat.accessibility", qos: .userInitiated)
@@ -28,6 +30,9 @@ final class WeChatQuickForward: ObservableObject {
     private var lastFolder: URL?
     private var lastTarget: (id: String, name: String, pastePath: Bool)?
     private var statusExpiry: Task<Void, Never>?
+    /// How far the run in progress has got, as the engine reports it after
+    /// each batch. Becomes `interrupted` if the run stops before the end.
+    private var exportedSoFar: WeChatForwardInterruption?
     private var observers = Set<AnyCancellable>()
     /// Only a full forward raises it. `readCurrentChat` is one AX read with no
     /// synthesized input, so there is nothing to keep the user's hands off.
@@ -43,6 +48,7 @@ final class WeChatQuickForward: ObservableObject {
         stored = WeChatForwardPreferences.decode(defaults.data(forKey: Self.key))
         draft = stored.draft
         recent = stored.recent
+        interrupted = stored.interrupted
         refreshApplications()
         runner.reservedFrame = { [weak self] in self?.hud.frame }
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
@@ -56,6 +62,14 @@ final class WeChatQuickForward: ObservableObject {
     var canRun: Bool {
         !isBusy && !isReadingChat && !otherAutomationIsBusy() && !WeChatForwardPreset.normalizedChat(draft.chat).isEmpty && draft.range.isAvailableForAutomation &&
         (draft.destinationFolder.map(\.isFileURL) ?? applications.contains { $0.id == draft.targetBundleIdentifier })
+    }
+    /// The message a continued run starts from: shown while the chat in the
+    /// form is the one a run stopped partway through and the range reaches
+    /// past what that run exported.
+    var resumableFrom: Int? {
+        guard let interrupted, interrupted.chat == WeChatForwardPreset.normalizedChat(draft.chat),
+              draft.range.isAvailableForAutomation, draft.range.value > interrupted.exported else { return nil }
+        return interrupted.exported + 1
     }
     func refreshApplications() {
         applications = RunningApp.current(excluding: [Bundle.main.bundleIdentifier ?? "dev.dukou.Dukou", WeChatAccessibility.bundleIdentifier, "com.apple.finder"])
@@ -136,6 +150,21 @@ final class WeChatQuickForward: ObservableObject {
     }
     private func persist() { if let data = try? JSONEncoder().encode(stored) { defaults.set(data, forKey: Self.key) } }
 
+    /// A run that never finished a batch leaves the last interruption alone.
+    private func rememberInterruption() {
+        guard let exportedSoFar else { return }
+        stored.interrupted = exportedSoFar
+        interrupted = exportedSoFar
+        self.exportedSoFar = nil
+        persist()
+    }
+
+    private func forgetInterruption() {
+        stored.interrupted = nil
+        interrupted = nil
+        persist()
+    }
+
     func readCurrentChat() {
         guard !isBusy, !isReadingChat, !otherAutomationIsBusy() else { return }
         authorization.refresh()
@@ -161,7 +190,14 @@ final class WeChatQuickForward: ObservableObject {
         status = L10n.text("正在停止…")
     }
 
-    func start(_ saved: WeChatForwardPreset? = nil) {
+    /// Exports what an interrupted run did not get to, and sends it on with
+    /// what that run did export.
+    func resume() {
+        guard resumableFrom != nil else { return }
+        start(resuming: true)
+    }
+
+    func start(_ saved: WeChatForwardPreset? = nil, resuming: Bool = false) {
         guard !isBusy, !isReadingChat, !otherAutomationIsBusy() else { return }
         if let saved { draft = saved }
         guard draft.range.unit == .messages else {
@@ -205,7 +241,7 @@ final class WeChatQuickForward: ObservableObject {
         let requestedAt = Date()
         runner.enqueueExclusive { [weak self] in
             guard let self else { return }
-            await self.run(preset, targetPID: targetPID, requestedAt: requestedAt, token: token)
+            await self.run(preset, targetPID: targetPID, requestedAt: requestedAt, token: token, resuming: resuming)
         }
     }
 
@@ -224,9 +260,10 @@ final class WeChatQuickForward: ObservableObject {
         }
     }
 
-    private func run(_ preset: WeChatForwardPreset, targetPID: pid_t?, requestedAt: Date, token: WeChatCancellation) async {
+    private func run(_ preset: WeChatForwardPreset, targetPID: pid_t?, requestedAt: Date, token: WeChatCancellation, resuming: Bool) async {
         let started = ProcessInfo.processInfo.systemUptime
         var deferredIntake = false
+        exportedSoFar = nil
         defer {
             hud.hide()
             if deferredIntake { model.resumeIntake(); shelf.resumePresentation() }
@@ -244,23 +281,50 @@ final class WeChatQuickForward: ObservableObject {
                     throw AutoPaste.Failure.didNotBecomeActive(name: preset.targetName)
                 }
             }
+            var earlier: WeChatForwardInterruption?
+            if resuming {
+                guard var record = stored.interrupted, record.chat == preset.chat, preset.range.value > record.exported else {
+                    throw WeChatAutomationError.resumeLost
+                }
+                // Cleared from 记录 or aged out, those files cannot go along
+                // with the rest any more; where they ended still says where to
+                // carry on from.
+                let reader = InboxReader(inbox: inbox)
+                if !record.batches.allSatisfy({ reader.batch(at: inbox.ready.appendingPathComponent($0))?.items.count == 1 }) {
+                    record.batches = []
+                    record.counts = []
+                }
+                earlier = record
+            }
             let extensionURL = Bundle.main.bundleURL.appendingPathComponent("Contents/PlugIns/DukouShare.appex")
             model.deferIntake()
             shelf.suspendPresentation()
             deferredIntake = true
+            let hud = self.hud
             let capture: WeChatCapture = try await withCheckedThrowingContinuation { continuation in
                 Self.worker.async {
                     continuation.resume(with: Result {
                         if let folder = preset.destinationFolder { try QuickForwardFolderDelivery.validateFolder(folder) }
                         try token.check()
-                        let engine = try WeChatAccessibility(chat: preset.chat, cancellation: token) { [weak self] message in
+                        let engine = try WeChatAccessibility(chat: preset.chat, cancellation: token, progress: { [weak self] message in
                             DispatchQueue.main.async { self?.status = message }
-                        }
+                        }, makeRoom: { point in
+                            // Waited for: the click goes out right after.
+                            DispatchQueue.main.sync { MainActor.assumeIsolated { hud.stepAside(from: point) } }
+                        })
                         return try engine.capture(range: preset.range, ready: inbox.ready, shelfExtension: extensionURL,
-                                                  identifySelf: preset.htmlPreview)
+                                                  identifySelf: preset.htmlPreview, resuming: earlier) { [weak self] record in
+                            // Waited for, like `makeRoom`: the run's outcome
+                            // must not reach the main thread ahead of it.
+                            DispatchQueue.main.sync { MainActor.assumeIsolated { self?.exportedSoFar = record } }
+                        }
                     })
                 }
             }
+            // Every message is in hand from here: whatever goes wrong next,
+            // there is nothing left to carry on.
+            exportedSoFar = nil
+            if stored.interrupted?.chat == preset.chat { forgetInterruption() }
             try token.check()
             let reader = InboxReader(inbox: inbox)
             guard capture.messageCount > 0 else {
@@ -352,8 +416,10 @@ final class WeChatQuickForward: ObservableObject {
                 if !savedOutcome { error = L10n.text("粘贴已完成，但部分记录状态未能保存。") }
             }
         } catch is CancellationError {
+            rememberInterruption()
             status = L10n.text("已取消，已收到的文件保留在暂存架。")
         } catch {
+            if case WeChatAutomationError.resumeLost = error { forgetInterruption() } else { rememberInterruption() }
             status = nil
             self.error = error.localizedDescription
             // 设置 is behind WeChat by now and usually closed altogether, so the

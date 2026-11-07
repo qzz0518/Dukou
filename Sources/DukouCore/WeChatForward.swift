@@ -178,6 +178,8 @@ public struct WeChatForwardPreset: Codable, Hashable, Identifiable, Sendable {
 public struct WeChatForwardPreferences: Codable, Sendable {
     public var draft: WeChatForwardPreset = .init()
     public var recent: [WeChatForwardPreset] = []
+    /// The last run that stopped partway, while it can still be continued.
+    public var interrupted: WeChatForwardInterruption?
     public init() {}
 
     public mutating func recordSuccess(_ preset: WeChatForwardPreset, at date: Date = Date()) {

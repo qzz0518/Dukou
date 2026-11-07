@@ -8,6 +8,7 @@ import Vision
 enum WeChatAutomationError: Error, LocalizedError {
     case notRunning, interfaceHidden, wrongChat, busyChat, focusChanged, historyIncomplete, noMessages
     case selection, loading, unreadable, screenRecording, unsupportedLayout, missingShare, ambiguousReceipt, receiptTimeout, invalidArchive, timeRangeUnavailable
+    case noSelectionMenu, notificationInTheWay, resumeLost
     case control(String)
 
     var errorDescription: String? {
@@ -29,6 +30,9 @@ enum WeChatAutomationError: Error, LocalizedError {
         case .receiptTimeout: L10n.text("等待微信导出超时。已收到的文件会保留在暂存架。")
         case .invalidArchive: L10n.text("微信导出的文件为空或无法完整读取，文件已保留。")
         case .timeRangeUnavailable: L10n.text("按时间选取暂未开放，请改用条数。")
+        case .noSelectionMenu: L10n.text("右键这一批的起点消息和它相邻的消息，微信都没有弹出“多选”，已停止。请把 ~/Library/Logs/Dukou/WeChat/latest.json 附到 GitHub 反馈中。")
+        case .notificationInTheWay: L10n.text("一条系统通知挡住了微信，已停止。请关掉通知后重试。")
+        case .resumeLost: L10n.text("没能找回上次中断的位置，可能这期间聊天记录有变动。请从头重新导出，之前已导出的文件仍保留在暂存架。")
         case .control(let label): L10n.format("微信没有显示“%@”。请回到普通聊天窗口后重试。", label)
         }
     }
@@ -103,6 +107,15 @@ final class WeChatAccessibility {
     private let chat: String
     private let cancellation: WeChatCancellation
     private let progress: (String) -> Void
+    /// Asks Dukou's progress capsule to move off a point about to be clicked.
+    /// True when it moved. See `makeReachable`.
+    private let makeRoom: (CGPoint) -> Bool
+    /// For asking what is on top at a point. Never posted to.
+    private let systemWide: AXUIElement = {
+        let element = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(element, 0.5)
+        return element
+    }()
     private var ownsSelection = false
     private var cleaningUp = false
     private let clock = { ProcessInfo.processInfo.systemUptime }
@@ -155,14 +168,20 @@ final class WeChatAccessibility {
     private var prefetchLoaded = 0
     private var snapshots: [[String: Any]] = []
     private var unsettled: [String: Any]?
+    private var notedOverlays: Set<String> = []
+    /// What asking the system what is under each click costs, for the report.
+    private var hitTestSeconds = 0.0
+    private var hitTests = 0
 
-    init(chat: String, cancellation: WeChatCancellation, progress: @escaping (String) -> Void) throws {
+    init(chat: String, cancellation: WeChatCancellation, progress: @escaping (String) -> Void,
+         makeRoom: @escaping (CGPoint) -> Bool = { _ in false }) throws {
         guard AXIsProcessTrusted() else { throw AutoPaste.Failure.notTrusted }
         guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleIdentifier).first else { throw WeChatAutomationError.notRunning }
         self.app = app
         self.chat = WeChatForwardPreset.normalizedChat(chat)
         self.cancellation = cancellation
         self.progress = progress
+        self.makeRoom = makeRoom
         root = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(root, 1)
     }
@@ -335,7 +354,55 @@ final class WeChatAccessibility {
         try frontmost()
         guard chatMatches(try scan()) else { throw WeChatAutomationError.focusChanged }
     }
+    /// The process whose window would take a click at `point`, asked of the
+    /// system rather than assumed. Nil when the system cannot say.
+    private func hitTest(_ point: CGPoint) -> (pid: pid_t, element: AXUIElement)? {
+        let started = clock()
+        defer { hitTestSeconds += clock() - started; hitTests += 1 }
+        var element: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &element) == .success,
+              let element else { return nil }
+        var pid: pid_t = 0
+        guard AXUIElementGetPid(element, &pid) == .success else { return nil }
+        return (pid, element)
+    }
+
+    /// A posted click goes to whatever window is on top at its point, and
+    /// nothing about posting it says whether that was WeChat. Two things are
+    /// known to sit over WeChat there, both in the top-right corner: Dukou's
+    /// own progress capsule — over WeChat whenever WeChat reaches that corner of
+    /// the menu-bar screen, which the developer's setup, with WeChat on another
+    /// display, never did — and notification banners. The capsule steps aside;
+    /// a banner is waited out, and an alert that stays is reported rather than
+    /// clicked. Any other window is clicked through as before: not every
+    /// window drawn over another takes its clicks.
+    private func makeReachable(_ point: CGPoint) throws {
+        if makeRoom(point) {
+            steps.append(["kind": "capsule-stepped-aside", "phase": phase])
+            // Let the window server see the capsule's new frame.
+            try pause(0.05)
+        }
+        let deadline = clock() + 8
+        while let hit = hitTest(point), hit.pid != app.processIdentifier {
+            let owner = hit.pid == getpid() ? "dukou" : NSRunningApplication(processIdentifier: hit.pid)?.bundleIdentifier ?? "pid \(hit.pid)"
+            guard owner == "com.apple.notificationcenterui" else {
+                // Said once per window and stage, for the report.
+                if notedOverlays.insert(owner + "@" + phase).inserted {
+                    steps.append(["kind": "click-under-other-window", "owner": owner, "phase": phase])
+                }
+                return
+            }
+            guard clock() < deadline else {
+                steps.append(["kind": "notification-in-the-way", "phase": phase])
+                throw WeChatAutomationError.notificationInTheWay
+            }
+            try pause(0.25)
+        }
+    }
+
     private func click(_ point: CGPoint, right: Bool = false, modifiers: CGEventFlags = []) throws {
+        try frontmost()
+        try makeReachable(point)
         try frontmost()
         let source = CGEventSource(stateID: .privateState)
         let button: CGMouseButton = right ? .right : .left
@@ -401,7 +468,8 @@ final class WeChatAccessibility {
         let deadline = clock() + timeout
         var relaxed: WCNode?
         var previous: WCNode?
-        repeat {
+        var graced = false
+        while true {
             try frontmost()
             let nodes = try scan()
             guard chatMatches(nodes) else { throw WeChatAutomationError.focusChanged }
@@ -413,7 +481,14 @@ final class WeChatAccessibility {
             // it is the one that has been verified against this UI.
             relaxed = looseControl(label, in: nodes)
             try pause(0.02)
-        } while clock() < deadline
+            guard clock() >= deadline else { continue }
+            // A control seen once, on the last look before the deadline, gets
+            // the second look that settles it. When a tree walk takes a few
+            // hundred milliseconds two of them may not fit in the time at all,
+            // and a menu that is plainly up would be reported missing.
+            guard settled, previous != nil, !graced else { break }
+            graced = true
+        }
         if !settled, let relaxed {
             locator = locator.isEmpty ? "loose-control" : locator + "+loose-control"
             return relaxed
@@ -503,16 +578,25 @@ final class WeChatAccessibility {
         return false
     }
 
+    private func parent(of element: AXUIElement) -> AXUIElement? {
+        guard let value = wcAttribute(element, "AXParent"), CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        return (value as! AXUIElement)
+    }
+
     private func focusedNode() -> WCNode? {
         guard let value = wcAttribute(root, "AXFocusedUIElement"), CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         let node = WCNode(value as! AXUIElement)
         return node.readError == .success ? node : nil
     }
 
-    private func navigationKey(_ code: CGKeyCode) throws {
+    /// `anywhereInList` also takes focus on what a row holds: outside
+    /// multi-select the sender's avatar has the keyboard row on its way up.
+    /// Qt names the list as its parent without listing it among the children.
+    private func navigationKey(_ code: CGKeyCode, anywhereInList: Bool = false) throws {
         try frontmost()
         guard let list = settledList, let focused = focusedNode(),
-              CFEqual(focused.element, list) || (wcAttribute(list, "AXChildren") as? [AXUIElement] ?? []).contains(where: { CFEqual($0, focused.element) }) else { throw WeChatAutomationError.focusChanged }
+              CFEqual(focused.element, list) || (anywhereInList && parent(of: focused.element).map({ CFEqual($0, list) }) == true)
+                || (wcAttribute(list, "AXChildren") as? [AXUIElement] ?? []).contains(where: { CFEqual($0, focused.element) }) else { throw WeChatAutomationError.focusChanged }
         let source = CGEventSource(stateID: .privateState)
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true),
               let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false) else { throw AutoPaste.Failure.eventCreationFailed }
@@ -702,16 +786,32 @@ final class WeChatAccessibility {
         return label.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func beginSelection(at index: Int, in initialPage: Page) throws -> (String, Page) {
+    /// One message read twice: as a plain row, and as a checkbox in
+    /// multi-select, where WeChat puts the sender's name in front of it.
+    private func sameMessage(normal: WCNode, selecting: WCNode) -> Bool {
+        normal.strings.contains { plain in selecting.strings.contains { $0 == plain || $0.hasSuffix(" " + plain) } }
+    }
+
+    /// Puts WeChat in multi-select with exactly the anchor checked. Also says
+    /// whether that took a neighbour's menu: the keyboard row is then wherever
+    /// the last checkbox click left it, not on the previous batch's endpoint.
+    private func beginSelection(at index: Int, in initialPage: Page) throws -> (String, Page, Bool) {
         phase = "select-anchor-menu"
         guard initialPage.rows.indices.contains(index) else { throw WeChatAutomationError.selection }
         var page = initialPage
         var tracked = WeChatViewport(rows: page.data, anchorIndex: index)
         var failure: Error = WeChatAutomationError.selection
+        var menuSeen = false, menuMissed = false
+        // Goes straight to the neighbour: the only way to exercise that path
+        // on a chat whose messages all have menus. Off unless set by hand —
+        // defaults write ~/Library/Preferences/dev.dukou.Dukou.plist
+        //   dev.dukou.wechat.forceNeighbourEntry -bool true
+        let forceNeighbour = UserDefaults.standard.bool(forKey: "dev.dukou.wechat.forceNeighbourEntry")
+        if forceNeighbour { steps.append(["kind": "forced-neighbour-entry"]) }
         // A menu can appear without its click taking effect immediately after
         // scrolling. Retry the whole transition, not just finding the label.
         // Both sides get another chance, using the current boundary geometry.
-        for attempt in 0..<4 {
+        for attempt in 0..<(forceNeighbour ? 0 : 4) {
             if attempt > 0 {
                 try verifyChat()
                 if ownsSelection { try restoreSelection() }
@@ -719,17 +819,14 @@ final class WeChatAccessibility {
                 do { try tracked.resume(page.data) } catch { throw WeChatAutomationError.selection }
             }
             guard let current = tracked.index(of: 0), page.rows.indices.contains(current) else { throw WeChatAutomationError.selection }
-            let node = page.rows[current], viewport = page.list.rect
-            // Stay in the main body, above a quoted-message preview.
-            let y = node.rect.minY + min(50, node.rect.height / 2)
-            guard y > viewport.minY + 4, y < viewport.maxY - 4 else { throw WeChatAutomationError.selection }
-            let inset = min(85, node.rect.width / 2)
-            let x = attempt.isMultiple(of: 2) ? node.rect.minX + inset : node.rect.maxX - inset
+            let node = page.rows[current]
             do {
-                try click(CGPoint(x: x, y: y), right: true)
-                let multi = try waitControl("多选", timeout: 0.5, settled: true)
+                let multi: WCNode
+                do { multi = try openSelectionMenu(on: node, in: page, attempt: attempt) }
+                catch WeChatAutomationError.control { menuMissed = true; throw WeChatAutomationError.control("多选") }
+                menuSeen = true
                 steps.append(["kind": "selection-menu", "attempt": attempt + 1, "rowY": node.rect.minY,
-                              "menuY": multi.rect.minY, "menuX": multi.rect.minX])
+                              "menuY": multi.rect.minY, "menuX": multi.rect.minX, "menuRole": multi.role])
                 // Qt's menu items expose no AXPress. Their popup coordinates
                 // must have settled before the synthetic click is posted.
                 ownsSelection = true
@@ -737,12 +834,11 @@ final class WeChatAccessibility {
                 _ = try waitControl("合并转发", timeout: attempt == 3 ? 2 : 0.5)
                 let selectedPage = try stablePage()
                 let selected = selectedPage.rows.filter(\.selected)
-                guard selected.count == 1, let first = selected.first,
-                      node.strings.contains(where: { normal in first.strings.contains { $0 == normal || $0.hasSuffix(" " + normal) } }) else {
+                guard selected.count == 1, let first = selected.first, sameMessage(normal: node, selecting: first) else {
                     throw WeChatAutomationError.selection
                 }
                 observe("anchor-selected", selectedPage)
-                return (try checkedMessage(first), selectedPage)
+                return (try checkedMessage(first), selectedPage, false)
             }
             catch is CancellationError { throw CancellationError() }
             catch let error as WeChatAutomationError {
@@ -752,7 +848,205 @@ final class WeChatAccessibility {
                 }
             }
         }
-        throw failure
+        // Four right clicks on the anchor and not one menu with 多选 — issue
+        // #16, the 1601st message of a private chat, no menu at all. A fifth
+        // will not differ; the messages either side have menus of their own.
+        guard forceNeighbour || (menuMissed && !menuSeen) else { throw failure }
+        if let (label, selected) = try enterThroughNeighbour(&tracked) { return (label, selected, true) }
+        throw WeChatAutomationError.noSelectionMenu
+    }
+
+    /// Right-clicks a message and waits for 多选 in the menu that opens.
+    ///
+    /// A miss is written down — where on the row the click went, what the
+    /// system says is under that point, which menu came up if any — because
+    /// "no 多选" alone cannot tell a click beside a bubble from one on another
+    /// window or on a message that has no menu. A menu that came up without
+    /// 多选 is closed again: left open, it would swallow the next right click.
+    private func openSelectionMenu(on node: WCNode, in page: Page, attempt: Int) throws -> WCNode {
+        let viewport = page.list.rect
+        // Stay in the main body, above a quoted-message preview.
+        let y = node.rect.minY + min(50, node.rect.height / 2)
+        guard y > viewport.minY + 4, y < viewport.maxY - 4 else { throw WeChatAutomationError.selection }
+        let inset = min(85, node.rect.width / 2)
+        let left = attempt.isMultiple(of: 2)
+        let point = CGPoint(x: left ? node.rect.minX + inset : node.rect.maxX - inset, y: y)
+        try click(point, right: true)
+        // Later attempts wait longer. A WeChat holding a couple of thousand
+        // loaded rows can be slow to put a menu up, and a menu that turns up
+        // after the wait gave up is dismissed, unseen, by the next right click.
+        do { return try waitControl("多选", timeout: [0.5, 0.8, 1.2, 1.6][min(attempt, 3)], settled: true) }
+        catch WeChatAutomationError.control {}
+        var nodes = try scan()
+        if control("多选", in: nodes) != nil {
+            do { return try waitControl("多选", timeout: 0.3, settled: true) }
+            catch WeChatAutomationError.control { nodes = try scan() }
+        }
+        let menu = openMenuItems(in: nodes, near: point)
+        if !menu.isEmpty { try dismissMenu(near: point) }
+        steps.append([
+            "kind": "selection-menu-miss", "phase": phase, "attempt": attempt + 1, "side": left ? "left" : "right",
+            "dx": Int(point.x - node.rect.minX), "dy": Int(point.y - node.rect.minY),
+            "row": [Int(node.rect.minX), Int(node.rect.minY), Int(node.rect.width), Int(node.rect.height)],
+            "under": describeHit(at: point, row: node),
+            // Menu labels are WeChat's, not the user's; kept short regardless.
+            "menu": menu.prefix(16).map { item -> [String: Any] in ["label": String((item.strings.first ?? "").prefix(12)), "enabled": item.enabled] },
+            "shape": attempt == 0 ? shape(of: node) : [],
+        ])
+        throw WeChatAutomationError.control("多选")
+    }
+
+    /// The items of a context menu open near `point` — one opens at the
+    /// pointer. Read off the menu itself where WeChat exposes one, so a
+    /// build that dresses its items as something other than menu items is
+    /// still seen; the scan never enters the menu bar, so its menus are not.
+    private func openMenuItems(in nodes: [WCNode], near point: CGPoint) -> [WCNode] {
+        func near(_ node: WCNode) -> Bool {
+            !node.rect.isEmpty && abs(node.rect.midX - point.x) < 600 && abs(node.rect.midY - point.y) < 800
+        }
+        let menus = nodes.filter { $0.role == "AXMenu" && near($0) }
+        let items = menus.flatMap { $0.children.prefix(24).map(WCNode.init) }
+        return items.isEmpty ? nodes.filter { $0.role == "AXMenuItem" && near($0) } : items
+    }
+
+    /// Closes a menu a right click opened. Escape, posted as if typed in
+    /// WeChat and tagged so the capsule's Escape watch does not take it for
+    /// the user stopping the run. Only ever sent with a menu seen open.
+    private func dismissMenu(near point: CGPoint) throws {
+        try frontmost()
+        let source = CGEventSource(stateID: .privateState)
+        guard let down = CGEvent(keyboardEventSource: source, virtualKey: 53, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: 53, keyDown: false) else { throw AutoPaste.Failure.eventCreationFailed }
+        for event in [down, up] {
+            event.flags = []
+            event.setIntegerValueField(.eventSourceUserData, value: MomentsAccessibility.eventTag)
+        }
+        down.post(tap: .cghidEventTap)
+        // A posted key is always released, including on cancellation.
+        up.post(tap: .cghidEventTap)
+        let deadline = clock() + 0.6
+        while clock() < deadline {
+            guard !openMenuItems(in: try scan(), near: point).isEmpty else { break }
+            try pause(0.03)
+        }
+    }
+
+    /// What a click at `point` landed on, relative to the row it was aimed at.
+    /// Roles, identifiers and geometry only, as everywhere in latest.json.
+    private func describeHit(at point: CGPoint, row: WCNode) -> [String: Any] {
+        guard let hit = hitTest(point) else { return ["owner": "unknown"] }
+        guard hit.pid == app.processIdentifier else {
+            return ["owner": hit.pid == getpid() ? "dukou" : NSRunningApplication(processIdentifier: hit.pid)?.bundleIdentifier ?? "pid \(hit.pid)"]
+        }
+        var relation = "elsewhere"
+        var current: AXUIElement? = hit.element
+        for depth in 0..<8 {
+            guard let element = current else { break }
+            let id = wcAttribute(element, "AXIdentifier") as? String
+            if CFEqual(element, row.element) || (id == "chat_bubble_item_view" && WCNode(element).rect == row.rect) {
+                relation = depth == 0 ? "row" : "inside-row"; break
+            }
+            if id == "chat_bubble_item_view" { relation = "another-row"; break }
+            if id == "chat_message_list" { relation = "list"; break }
+            current = wcAttribute(element, "AXParent").flatMap { CFGetTypeID($0) == AXUIElementGetTypeID() ? ($0 as! AXUIElement) : nil }
+        }
+        let node = WCNode(hit.element)
+        return ["owner": "wechat", "relation": relation, "role": node.role,
+                "id": node.id.hasPrefix("session_item_") ? "session_item_*" : node.id,
+                "rect": [Int(node.rect.minX - row.rect.minX), Int(node.rect.minY - row.rect.minY), Int(node.rect.width), Int(node.rect.height)]]
+    }
+
+    /// A row's make-up — which parts it has and where they sit — says what
+    /// kind of message it is without saying what the message says.
+    private func shape(of row: WCNode, depth: Int = 0, origin: CGPoint? = nil) -> [[String: Any]] {
+        let base = origin ?? row.rect.origin
+        return row.children.prefix(8).map { child in
+            let node = WCNode(child)
+            var entry: [String: Any] = ["role": node.role, "id": node.id, "empty": node.strings.isEmpty,
+                                        "rect": [Int(node.rect.minX - base.x), Int(node.rect.minY - base.y), Int(node.rect.width), Int(node.rect.height)]]
+            if depth < 1, !node.children.isEmpty { entry["children"] = shape(of: node, depth: depth + 1, origin: base) }
+            return entry
+        }
+    }
+
+    /// Multi-select entered from the message beside the anchor, then the two
+    /// checkboxes swapped: the anchor ticked, the neighbour cleared. Nil when
+    /// no neighbour on screen brings up 多选 either.
+    private func enterThroughNeighbour(_ tracked: inout WeChatViewport) throws -> (String, Page)? {
+        phase = "select-anchor-neighbour"
+        // Below first. On a resumed batch that is the previous batch's
+        // endpoint, on screen under an anchor scrolled up to the top; the
+        // newest message, which starts the first batch, only has one above.
+        for offset in [1, -1] {
+            let below = offset > 0
+            for attempt in 0..<2 {
+                // Each try reads the list afresh, as the anchor's own do: a
+                // right click that opened nothing may still have moved it.
+                try verifyChat()
+                if ownsSelection { try restoreSelection() }
+                let page = try stablePage()
+                do { try tracked.resume(page.data) } catch { throw WeChatAutomationError.selection }
+                guard let anchorIndex = tracked.index(of: 0), page.rows.indices.contains(anchorIndex) else { throw WeChatAutomationError.selection }
+                guard page.rows.indices.contains(anchorIndex + offset) else {
+                    steps.append(["kind": "neighbour-off-screen", "below": below])
+                    break
+                }
+                let anchor = page.rows[anchorIndex], neighbour = page.rows[anchorIndex + offset]
+                let multi: WCNode
+                do { multi = try openSelectionMenu(on: neighbour, in: page, attempt: attempt) }
+                catch WeChatAutomationError.control { continue }
+                catch WeChatAutomationError.selection {
+                    steps.append(["kind": "neighbour-off-screen", "below": below])
+                    break
+                }
+                ownsSelection = true
+                try press(multi)
+                _ = try waitControl("合并转发", timeout: 2)
+                // The neighbour is the one checked; the anchor is next to it.
+                var selecting = try stablePage()
+                let checked = selecting.rows.indices.filter { selecting.rows[$0].selected }
+                guard checked.count == 1, let at = checked.first, sameMessage(normal: neighbour, selecting: selecting.rows[at]),
+                      selecting.rows.indices.contains(below ? at - 1 : at + 1) else { throw WeChatAutomationError.selection }
+                let target = selecting.rows[below ? at - 1 : at + 1]
+                guard sameMessage(normal: anchor, selecting: target), selecting.canCheck(target) else { throw WeChatAutomationError.selection }
+                try toggle(target)
+                selecting = try checkedPage(count: 2)
+                let pair = selecting.rows.indices.filter { selecting.rows[$0].selected }
+                guard pair[1] == pair[0] + 1 else { throw WeChatAutomationError.selection }
+                let ticked = selecting.rows[below ? pair[0] : pair[1]], cleared = selecting.rows[below ? pair[1] : pair[0]]
+                guard sameMessage(normal: anchor, selecting: ticked), sameMessage(normal: neighbour, selecting: cleared),
+                      selecting.canCheck(cleared) else { throw WeChatAutomationError.selection }
+                try toggle(cleared)
+                selecting = try checkedPage(count: 1)
+                guard let first = selecting.rows.first(where: \.selected), sameMessage(normal: anchor, selecting: first) else {
+                    throw WeChatAutomationError.selection
+                }
+                steps.append(["kind": "selection-menu", "via": below ? "newer-neighbour" : "older-neighbour",
+                              "attempt": attempt + 1, "rowY": anchor.rect.minY, "menuRole": multi.role])
+                observe("anchor-selected", selecting)
+                return (try checkedMessage(first), selecting)
+            }
+        }
+        return nil
+    }
+
+    /// Ticks or clears one message in multi-select at its checkbox, the spot
+    /// the Shift range click uses.
+    private func toggle(_ row: WCNode) throws {
+        try click(CGPoint(x: row.rect.minX + 22, y: row.rect.midY))
+    }
+
+    /// The page once exactly `count` visible messages are ticked. A settled
+    /// page can still be the one from before the click: two equal looks only
+    /// say nothing moved between them.
+    private func checkedPage(count: Int) throws -> Page {
+        let deadline = clock() + 1
+        while true {
+            let page = try stablePage()
+            if page.rows.filter(\.selected).count == count { return page }
+            guard clock() < deadline else { throw WeChatAutomationError.selection }
+            try pause(0.05)
+        }
     }
 
     private struct Selection {
@@ -1112,6 +1406,84 @@ final class WeChatAccessibility {
         return (page, tracked)
     }
 
+    /// Picks up an interrupted run where it stopped.
+    ///
+    /// Walks the keyboard row up from the newest message, counting messages as
+    /// `keyboardRange` does, until it sits on the last one that run exported.
+    /// Outside multi-select, measured on 4.2.0, Up steps through every row of
+    /// the list in order, with a stop on the sender's avatar besides. Messages
+    /// that arrived in between are counted on the way, by finding the rows
+    /// that were newest when that run began. Ends as a batch that had just
+    /// exported up to that row would: its endpoint ordinal 0, the next start
+    /// one above it.
+    private func walkToBoundary(_ earlier: WeChatForwardInterruption, from latest: Page) throws -> SelectionStart {
+        phase = "resume-walk"
+        let started = clock()
+        guard try focusList(latest), let list = settledList else { throw WeChatAutomationError.selection }
+        try navigationKey(119, anywhereInList: true) // End
+        // The final row can be a time or a notice; counting starts at the
+        // first message above it.
+        let settled = clock() + 1
+        while clock() < settled {
+            if let last = (wcAttribute(list, "AXChildren") as? [AXUIElement])?.last, let focused = focusedNode(), CFEqual(last, focused.element) { break }
+            try pause(0.01)
+        }
+        guard var current = focusedNode() else { throw WeChatAutomationError.focusChanged }
+        var search = WeChatResumeSearch(window: earlier.newest)
+        var ordinal = -1, keys = 0
+        func count(_ node: WCNode) {
+            guard node.id == "chat_bubble_item_view" else { return }
+            ordinal += 1
+            search.add(WeChatMessageMark(hash: textHash(node), height: node.rect.height))
+        }
+        func report(_ outcome: String, arrivals: Int? = nil) {
+            steps.append(["kind": "resume-walk", "outcome": outcome, "exported": earlier.exported, "arrivals": arrivals ?? -1,
+                          "messages": ordinal + 1, "keys": keys, "candidates": search.candidates.count,
+                          "window": earlier.newest.count, "seconds": clock() - started])
+        }
+        count(current)
+        let deadline = started + 30 + Double(earlier.exported + WeChatResumeSearch.maximumArrivals) * 0.05
+        var found: Int?
+        while true {
+            do { found = try search.arrivals() } catch { report("\(error)"); throw WeChatAutomationError.resumeLost }
+            if let found, ordinal >= found + earlier.exported - 1 {
+                guard ordinal == found + earlier.exported - 1 else { report("overshot", arrivals: found); throw WeChatAutomationError.resumeLost }
+                break
+            }
+            guard clock() < deadline else { report("deadline"); throw WeChatAutomationError.selection }
+            if keys % 100 == 0 { progress(L10n.format("正在定位上次中断的位置 · 已数过 %d 条", max(0, ordinal + 1))) }
+            try navigationKey(126, anywhereInList: true)
+            keys += 1
+            // Longer than `keyboardRange` gives a key: over a walk of a
+            // thousand keys WeChat was seen to go quiet for more than two
+            // seconds. A key not acted on yet is waited for, never pressed
+            // again — two that both land move two rows for one counted.
+            let changed = min(deadline, clock() + 5)
+            var moved: WCNode?
+            repeat {
+                try frontmost()
+                if let next = focusedNode(), next.id != "virtual_cell", !next.rect.isEmpty,
+                   !CFEqual(current.element, next.element) || current.strings != next.strings { moved = next; break }
+                try pause(0.001)
+            } while clock() < changed
+            // Up does not fetch history the way Home does: this is the top of
+            // what WeChat has loaded.
+            guard let next = moved else { report("stalled"); throw WeChatAutomationError.historyIncomplete }
+            guard parent(of: next.element).map({ CFEqual($0, list) }) == true else { throw WeChatAutomationError.focusChanged }
+            count(next)
+            current = next
+        }
+        let page = try stablePage()
+        guard current.id == "chat_bubble_item_view",
+              let endpoint = page.rows.firstIndex(where: { CFEqual($0.element, current.element) && $0.strings == current.strings }) else {
+            report("endpoint-off-page", arrivals: found)
+            throw WeChatAutomationError.selection
+        }
+        report("found", arrivals: found)
+        observe("resume-walk", page)
+        return .resume(try checkpoint(WeChatViewport(rows: page.data, anchorIndex: endpoint), page: page, keyboardOrdinal: 0), ordinal: 1)
+    }
+
     private func selectBatch(limit: Int, start: SelectionStart, latestPage: Page? = nil) throws -> Selection {
         phase = "select-anchor"
         let anchorIndex: Int, anchorPage: Page
@@ -1193,7 +1565,7 @@ final class WeChatAccessibility {
             guard let latest = page.rows.last, page.canCheck(latest) else { throw WeChatAutomationError.selection }
             anchorIndex = page.rows.count - 1; anchorPage = page
         }
-        let (newest, selectedPage) = try beginSelection(at: anchorIndex, in: anchorPage)
+        let (newest, selectedPage, viaNeighbour) = try beginSelection(at: anchorIndex, in: anchorPage)
         phase = "select-range"
         // Every batch needs the exact first visible message before pressing
         // the range button. Track overlapping content and measured motion,
@@ -1203,7 +1575,7 @@ final class WeChatAccessibility {
         var tracked = WeChatViewport(rows: page.data, anchorIndex: index)
         if limit == 1 { return Selection(count: 1, checkpoint: try checkpoint(tracked, page: page)) }
         var usedKeyboard = false
-        if let (arrived, positioned) = try keyboardRange(from: page, limit: limit, endpointFocus: resumedFromKeyboard) {
+        if let (arrived, positioned) = try keyboardRange(from: page, limit: limit, endpointFocus: resumedFromKeyboard && !viaNeighbour) {
             page = arrived; tracked = positioned; usedKeyboard = true
         } else {
             // Setting AXFocused may itself scroll in another Qt version.
@@ -1237,8 +1609,16 @@ final class WeChatAccessibility {
                 // the visible interval in one action, including quoted rows.
                 if unchanged > 0, limit < 100, let newestIndex = tracked.index(of: 0),
                    target < newestIndex, page.canCheck(row), page.canCheck(page.rows[newestIndex]) {
-                    try click(CGPoint(x: row.rect.minX + 22, y: row.rect.midY), modifiers: .maskShift)
-                    shiftRangeClicks += 1
+                    if viaNeighbour {
+                        // Shift ranges from the last checkbox clicked, and here
+                        // that is the neighbour's, cleared: measured on 4.2.0,
+                        // it then ticks the one row and nothing between. The
+                        // rows are all on screen, so tick them one by one.
+                        for index in target..<newestIndex { try toggle(page.rows[index]) }
+                    } else {
+                        try click(CGPoint(x: row.rect.minX + 22, y: row.rect.midY), modifiers: .maskShift)
+                        shiftRangeClicks += 1
+                    }
                     page = try stablePage()
                     observe("after-shift-range", page)
                     do { try tracked.resume(page.data) } catch { throw WeChatAutomationError.selection }
@@ -1618,9 +1998,9 @@ final class WeChatAccessibility {
     }
 
     private func diagnostics(started: Double, outcome: String, count: Int) {
-        let report: [String: Any] = ["schemaVersion": 7, "strategy": "native-keyboard-range", "at": ISO8601DateFormatter().string(from: Date()),
+        let report: [String: Any] = ["schemaVersion": 8, "strategy": "native-keyboard-range", "at": ISO8601DateFormatter().string(from: Date()),
             "outcome": outcome, "phase": phase, "seconds": clock() - started, "messageCount": count,
-            "navigationKeys": navigationKeys, "keyboardMessages": keyboardMessages, "scrolls": scrollCount, "scrollSeconds": scrollSeconds, "scanSeconds": scanSeconds, "scanCalls": scanCalls, "stableSeconds": stableSeconds, "exportSeconds": exportSeconds, "prefetchSeconds": prefetchSeconds, "prefetchRows": prefetchRows, "prefetchLoaded": prefetchLoaded, "scrollsByPhase": scrollsByPhase, "steps": steps, "clicks": clickCount, "rangeClicks": rangeClicks, "shiftRangeClicks": shiftRangeClicks, "exports": exportCount, "resumedBatches": resumedBatches, "keyboardPins": keyboardPins,
+            "navigationKeys": navigationKeys, "keyboardMessages": keyboardMessages, "scrolls": scrollCount, "scrollSeconds": scrollSeconds, "scanSeconds": scanSeconds, "scanCalls": scanCalls, "hitTestSeconds": hitTestSeconds, "hitTests": hitTests, "stableSeconds": stableSeconds, "exportSeconds": exportSeconds, "prefetchSeconds": prefetchSeconds, "prefetchRows": prefetchRows, "prefetchLoaded": prefetchLoaded, "scrollsByPhase": scrollsByPhase, "steps": steps, "clicks": clickCount, "rangeClicks": rangeClicks, "shiftRangeClicks": shiftRangeClicks, "exports": exportCount, "resumedBatches": resumedBatches, "keyboardPins": keyboardPins,
             "snapshots": snapshots, "unsettled": unsettled ?? [:], "receiptReadRetries": receiptReadRetries,
             "locator": locator, "visualMilliseconds": visualMilliseconds, "lastNodeCount": lastNodeCount,
             "scanTruncated": scanTruncated, "controlFailure": controlFailure ?? [:],
@@ -1632,9 +2012,17 @@ final class WeChatAccessibility {
         }
     }
 
-    func capture(range: WeChatForwardRange, ready: URL, shelfExtension: URL, identifySelf: Bool = false) throws -> WeChatCapture {
+    /// `earlier` carries an interrupted run on: its exports are counted in and
+    /// returned with the new ones. `onBatch` hears, after every batch, what a
+    /// later run would need to carry this one on.
+    func capture(range: WeChatForwardRange, ready: URL, shelfExtension: URL, identifySelf: Bool = false,
+                 resuming earlier: WeChatForwardInterruption? = nil,
+                 onBatch: (WeChatForwardInterruption) -> Void = { _ in }) throws -> WeChatCapture {
         guard range.unit == .messages else { throw WeChatAutomationError.timeRangeUnavailable }
         guard range.isValid else { throw WeChatAutomationError.selection }
+        if let earlier {
+            guard earlier.chat == chat, earlier.exported < range.value, earlier.batches.count == earlier.counts.count else { throw WeChatAutomationError.resumeLost }
+        }
         let started = clock()
         var count = 0, selectedCount = 0, outcome = "failed"
         defer { cleanup(); diagnostics(started: started, outcome: outcome, count: count) }
@@ -1643,13 +2031,27 @@ final class WeChatAccessibility {
         let selfSender = identifySelf ? try currentAccountNickname() : nil
         // Anything past one native batch reaches history WeChat has not
         // materialised yet. Load it in one pass now rather than a gesture at a
-        // time inside every batch's budget.
+        // time inside every batch's budget. Carrying a run on reaches past
+        // whatever has arrived since, too.
         let latestPage: Page?
-        if range.value > WeChatPrefetch.threshold { latestPage = try prefetchHistory(target: range.value) }
-        else { latestPage = nil }
-        var directories: [URL] = []
-        var batchMessageCounts: [Int] = []
+        if range.value > WeChatPrefetch.threshold {
+            let reach = range.value.addingReportingOverflow(earlier == nil ? 0 : WeChatResumeSearch.maximumArrivals)
+            latestPage = try prefetchHistory(target: reach.overflow ? Int.max : reach.partialValue)
+        } else { latestPage = nil }
+        var directories = earlier?.batches.map { ready.appendingPathComponent($0) } ?? []
+        var batchMessageCounts = earlier?.counts ?? []
+        selectedCount = earlier?.exported ?? 0
+        count = batchMessageCounts.reduce(0, +)
+        // What a later run would look for to carry this one on: the rows on
+        // screen at the newest message, before anything else moves.
+        let newest = earlier?.newest ?? latestPage.map { page in
+            page.rows.reversed().map { WeChatMessageMark(hash: textHash($0), height: $0.rect.height) }
+        } ?? []
         var start = SelectionStart.latest
+        if let earlier {
+            guard let latestPage else { throw WeChatAutomationError.resumeLost }
+            start = try walkToBoundary(earlier, from: latestPage)
+        }
         while selectedCount < range.value {
             try verifyChat()
             let limit = min(100, range.value - selectedCount)
@@ -1668,6 +2070,10 @@ final class WeChatAccessibility {
             // trigger extra selection, retries or a discarded native ZIP.
             selectedCount += selected.count
             count += exportedCount ?? selected.count
+            if !newest.isEmpty {
+                onBatch(WeChatForwardInterruption(chat: chat, exported: selectedCount, newest: newest,
+                                                  batches: directories.map(\.lastPathComponent), counts: batchMessageCounts))
+            }
         }
         phase = "complete"; outcome = "exported"
         return WeChatCapture(directories: directories, batchMessageCounts: batchMessageCounts, messageCount: count, readSeconds: 0, captureSeconds: clock() - started,
